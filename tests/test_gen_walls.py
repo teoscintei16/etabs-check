@@ -2,7 +2,8 @@ import unittest
 
 from etabs_gen.connect import GenError
 from etabs_gen.frames import FrameSpec, build_frame_model
-from etabs_gen.layout import blocked, parse_indices, wall_runs
+from etabs_gen.layout import parse_indices
+from etabs_gen.plan import build_plan
 from tests.test_gen_frames import FakeSap
 
 
@@ -12,21 +13,25 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(parse_indices("middle", 3, "x"), [1])
         self.assertEqual(parse_indices("all", 3, "x"), [0, 1, 2])
         self.assertEqual(parse_indices("0, 2", 3, "x"), [0, 2])
-        for bad in ("5", "abc", "", "-1"):
+        self.assertEqual(parse_indices("none", 3, "x", allow_none=True), [])
+        for bad in ("5", "abc", "", "-1", "none"):
             with self.assertRaises(GenError):
                 parse_indices(bad, 3, "x")
 
     def test_runs_group_consecutive_bays_into_one_pier(self):
         spec = FrameSpec(bays=4, travei=2, walls=True, wall_lines_x="0", wall_bays_x="0,1,3", wall_lines_y="first", wall_bays_y="middle")
-        runs = wall_runs(spec)
+        runs = build_plan(spec).runs
         self.assertEqual([(r["axis"], r["line"], r["bays"], r["pier"]) for r in runs],
                          [("X", 0, [0, 1], "PX1"), ("X", 0, [3], "PX2"), ("Y", 0, [0], "PY1")])
 
     def test_blocked_nodes_and_beams(self):
-        runs = wall_runs(FrameSpec(bays=3, travei=3, walls=True, wall_lines_x="0", wall_bays_x="1", wall_lines_y="0", wall_bays_y="1"))
-        nodes, xb, yb = blocked(runs)
-        self.assertEqual(nodes, {(1, 0), (2, 0), (0, 1), (0, 2)})
-        self.assertEqual((xb, yb), ({(0, 1)}, {(0, 1)}))
+        plan = build_plan(FrameSpec(bays=3, travei=3, walls=True, wall_lines_x="0", wall_bays_x="1", wall_lines_y="0", wall_bays_y="1"))
+        idx = len(plan.stories) - 1
+        cols = set(plan.columns(idx))
+        self.assertFalse(cols & {(1, 0), (2, 0), (0, 1), (0, 2)})                    # capetele peretilor n-au stalp
+        bx, by = plan.beams(idx)
+        self.assertNotIn((0, 1), bx)
+        self.assertNotIn((0, 1), by)
 
 
 class WallModelTests(unittest.TestCase):

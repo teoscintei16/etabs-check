@@ -68,3 +68,12 @@ def update_rows(sap, key: str, changes: dict[str | None, dict], key_field: str |
     if n:
         write_table(sap, key, version, fields, rows)
     return n
+
+
+def read_display(sap, key: str) -> list[dict]:
+    """Tabela de afisare (rezultate etc.) ca lista de dict; goala daca nu exista."""
+    r = sap.DatabaseTables.GetTableForDisplayArray(key, [""], "All", 0, [], 0, [])
+    if r[-1] != 0 or not r[3]:
+        return []
+    fields, n, data = list(r[2]), int(r[3]), list(r[4])
+    return [dict(zip(fields, data[i * len(fields):(i + 1) * len(fields)])) for i in range(n)]

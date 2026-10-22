@@ -79,6 +79,30 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(res["project"]["ag"], 0.2)
         self.assertEqual(res["project"]["lambda_mfse"], 0.85)
 
+    def test_static_coefficient_is_calibrated_to_each_directions_t1(self):
+        import tempfile
+        from pathlib import Path
+        sap = FakeSap()
+        spec = FrameSpec(stories=3, bays=2, travei=2)
+        with tempfile.TemporaryDirectory() as d:
+            res = build_frame_model(sap, spec, Path(d) / "m.EDB")
+        uc = {r["Name"]: float(r["C"]) for r in sap.DatabaseTables.t["Load Pattern Definitions - Auto Seismic - User Coefficient"][1]}
+        p = SeismicParams()
+        self.assertEqual(sap.calls("Analyze.RunAnalysis"), [()])
+        self.assertAlmostEqual(uc["EXP"], round(0.85 * sd(0.5, p) / 9.81, 5), 5)          # X: modul dominant 0.5 s (platou)
+        self.assertAlmostEqual(uc["EYN"], round(0.85 * sd(0.9, p) / 9.81, 5), 5)          # Y: modul dominant 0.9 s (> TC): C mai mic
+        self.assertLess(uc["EYN"], uc["EXP"])
+        self.assertTrue(any("forțe statice calibrate" in n for n in res["notes"]))
+        self.assertEqual(len(sap.calls("File.Save")), 2)                                     # salvat inainte si dupa calibrare
+
+    def test_calibration_can_be_disabled(self):
+        import tempfile
+        from pathlib import Path
+        sap = FakeSap()
+        with tempfile.TemporaryDirectory() as d:
+            build_frame_model(sap, FrameSpec(stories=3, bays=2, travei=2, calibrate_static=False), Path(d) / "m.EDB")
+        self.assertEqual(sap.calls("Analyze.RunAnalysis"), [])
+
     def test_gravity_only_model(self):
         sap, res = self.build(seismic=False)
         self.assertEqual(len(sap.calls("RespCombo.Add")), 3)

@@ -52,15 +52,22 @@ def seismic_coefficient(p: SeismicParams) -> float:
     return round(p.lam * p.gamma_I * p.ag * p.beta0 / p.q, 5)
 
 
+def coefficient_for_period(T: float, p: SeismicParams) -> float:
+    """C = λ·Sd(T1)/g: coeficientul fortelor statice pentru perioada fundamentala T1 (cum il calculeaza si verificatorul)."""
+    return round(p.lam * sd(T, p) / G, 5)
+
+
 # ---------------------------------------------------------------- combinatii
-def combos(has_perm: bool, static: list[str], rs: list[str], p: SeismicParams, gamma_g: float = 1.35, gamma_q: float = 1.5) -> list[tuple[str, list[tuple[str, float]]]]:
+def combos(has_perm: bool, static: list[str], rs: list[str], p: SeismicParams, gamma_g: float = 1.35, gamma_q: float = 1.5,
+           extra_perm: list[str] | tuple[str, ...] = ()) -> list[tuple[str, list[tuple[str, float]]]]:
     """[(nume, [(tipar_sau_caz, factor)])]. `static` = tiparele statice (EXP, EXN, EYP, EYN), `rs` = cazurile de spectru (SPECX, SPECY).
     Partea gravitationala a combinatiilor seismice = G + ψ2·Q, aceeasi cu multiplicatorii sursei de masa."""
     perm = [("Permanenta", 1.0)] if has_perm else []
     permu = [("Permanenta", gamma_g)] if has_perm else []
-    out = [("ULS", [("Dead", gamma_g), *permu, ("Live", gamma_q)]),
-           ("SLS_CAR", [("Dead", 1.0), *perm, ("Live", 1.0)]),
-           ("SLS_QP", [("Dead", 1.0), *perm, ("Live", p.psi2)])]
+    ep = list(extra_perm)         # tipare permanente suplimentare (ex. impingerea pamantului): in ULS si SLS, nu in combinatiile seismice
+    out = [("ULS", [("Dead", gamma_g), *permu, ("Live", gamma_q), *[(e, gamma_g) for e in ep]]),
+           ("SLS_CAR", [("Dead", 1.0), *perm, ("Live", 1.0), *[(e, 1.0) for e in ep]]),
+           ("SLS_QP", [("Dead", 1.0), *perm, ("Live", p.psi2), *[(e, 1.0) for e in ep]])]
     grav = [("Dead", 1.0), *perm, ("Live", p.psi2)]
     axis = {n: ("X" if n[1] == "X" else "Y") for n in static}
     for a in static:

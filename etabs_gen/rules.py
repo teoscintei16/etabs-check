@@ -5,8 +5,8 @@ from __future__ import annotations
 import math
 
 from .connect import GenError, ok
-from .seismic import SeismicParams, combos, seismic_coefficient, spectrum_points
-from .tables import read_table, update_rows, upsert_entities
+from .seismic import SeismicParams, coefficient_for_period, combos, seismic_coefficient, spectrum_points
+from .tables import read_display, read_table, update_rows, upsert_entities
 
 QUAKE = 5
 RS_FUNCTION = "SPECTRU_P100"
@@ -25,10 +25,18 @@ def apply_cracking(sap, spec, names: dict[str, str]) -> str:
     s = spec.crack_slab
     ok(sap.PropArea.SetModifiers(names["slab"], [1.0, 1.0, 1.0, s, s, s, 1.0, 1.0, 1.0, 1.0]), "PropArea.SetModifiers")
     extra = ""
+    if "cbeam" in names:             # grinzi de cuplare: ca grinzile obisnuite (inertie si torsiune reduse)
+        ok(sap.PropFrame.SetModifiers(names["cbeam"], [1.0, 1.0, 1.0, spec.crack_beam_J, spec.crack_beam_I, spec.crack_beam_I, 1.0, 1.0]),
+           "PropFrame.SetModifiers (cuplare)")
+        extra += ", grinzi de cuplare ca grinzile"
+    if "bwall" in names:
+        f, m = spec.crack_wall_f, spec.crack_wall_m
+        ok(sap.PropArea.SetModifiers(names["bwall"], [f, f, f, m, m, m, 1.0, 1.0, 1.0, 1.0]), "PropArea.SetModifiers (subsol)")
+        extra += ", pereți de subsol ca pereții"
     if "wall" in names:
         f, m = spec.crack_wall_f, spec.crack_wall_m
         ok(sap.PropArea.SetModifiers(names["wall"], [f, f, f, m, m, m, 1.0, 1.0, 1.0, 1.0]), "PropArea.SetModifiers (perete)")
-        extra = f", pereți f×{f:g}/m×{m:g}"
+        extra += f", pereți f×{f:g}/m×{m:g}"
     if "belt" in names:              # centura dummy: fara masa si greutate (peretele le are deja)
         ok(sap.PropFrame.SetModifiers(names["belt"], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0]), "PropFrame.SetModifiers (centură)")
         extra += ", centuri dummy fără masă"
@@ -76,7 +84,7 @@ def apply_mass_source(sap, spec, has_perm: bool) -> str:
 
 
 def apply_modal(sap, spec) -> str:
-    n = spec.modes_per_story * spec.stories
+    n = spec.modes_per_story * (spec.stories + spec.basement)
     ok(sap.LoadCases.ModalEigen.SetNumberModes("Modal", n, 1), "SetNumberModes")
     return f"moduri: {n} ({spec.modes_per_story}/etaj)"
 
@@ -112,9 +120,9 @@ def apply_seismic(sap, spec, top_story: str, base_story: str = "Base") -> tuple[
     return patterns, cases, [f"spectru P100-1 ({len(pts)} puncte), C = {seismic_coefficient(p):g}, e = {p.ecc:g}"]
 
 
-def apply_combinations(sap, spec, has_perm: bool, static: list[str], rs: list[str]) -> int:
+def apply_combinations(sap, spec, has_perm: bool, static: list[str], rs: list[str], extra_perm: list[str] | None = None) -> int:
     p = seismic_params(spec)
-    items = combos(has_perm, static, rs, p, spec.gamma_g, spec.gamma_q)
+    items = combos(has_perm, static, rs, p, spec.gamma_g, spec.gamma_q, extra_perm or ())
     for name, parts in items:
         ok(sap.RespCombo.Add(name, 0), f"RespCombo.Add({name})")
         for load, sf in parts:
@@ -130,3 +138,25 @@ def assert_finite(spec) -> None:
             raise GenError(f"Parametrul seismic „{f}” trebuie să fie pozitiv.")
     if not (spec.Tb < spec.Tc < spec.Td):
         raise GenError("Trebuie TB < TC < TD.")
+
+
+def calibrate_static(sap, spec, save_path: str) -> str:
+    """Calibreaza coeficientul seismic C al tiparelor statice dupa perioada fundamentala a fiecarei directii (T1 = perioada modului cu masa
+    participanta maxima pe directie), ca un proiectant dupa prima analiza modala. Ruleaza analiza (modelul trebuie salvat); la final
+    modelul ramane deblocat (C modificat). Intoarce o nota."""
+    code = sap.Analyze.RunAnalysis()
+    if code != 0:
+        raise GenError(f"Analiza pentru calibrarea fortelor statice a eșuat (cod {code}).")
+    modes = read_display(sap, "Modal Participating Mass Ratios")
+    if not modes:
+        return "calibrare forțe statice omisă: nu există rezultate modale"
+    p = seismic_params(spec)
+    t1 = {ax: float(max(modes, key=lambda r: float(r[f"U{ax}"]))["Period"]) for ax in ("X", "Y")}
+    changes = {f"E{ax}{sg}": {"C": f"{coefficient_for_period(t1[ax], p):g}"} for ax in ("X", "Y") for sg in ("P", "N")}
+    if sap.GetModelIsLocked():                  # dupa analiza modelul e blocat si editarea tabelelor e ignorata in tacere
+        ok(sap.SetModelIsLocked(False), "SetModelIsLocked")
+    update_rows(sap, "Load Pattern Definitions - Auto Seismic - User Coefficient", changes, "Name")
+    got = {r["Name"]: r["C"] for r in read_table(sap, "Load Pattern Definitions - Auto Seismic - User Coefficient")[2]}
+    if any(abs(float(got[n]) - float(c["C"])) > 1e-9 for n, c in changes.items()):
+        raise GenError("Calibrarea coeficientului seismic nu s-a aplicat (modelul a rămas blocat?).")
+    return f"forțe statice calibrate: T1x = {t1['X']:.3f} s (C = {coefficient_for_period(t1['X'], p):g}), T1y = {t1['Y']:.3f} s (C = {coefficient_for_period(t1['Y'], p):g})"

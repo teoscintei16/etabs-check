@@ -61,7 +61,7 @@
 </main>
 <script>
 const FIELDS = [
-  ["Structură", [["name","Nume model","text"],["stories","Etaje (x)","number"],["bays","Deschideri (y, pe X)","number"],["travei","Travei (z, pe Y)","number"],
+  ["Structură", [["structure","Tip de structură (aplică o presetare)","select"],["name","Nume model","text"],["stories","Etaje (x)","number"],["bays","Deschideri (y, pe X)","number"],["travei","Travei (z, pe Y)","number"],
     ["story_height","Înălțime etaj (m)","number"],["span_x","Deschidere (m)","number"],["span_y","Travee (m)","number"]]],
   ["Secțiuni și materiale", [["column_b","Stâlp lățime (m)","number"],["column_h","Stâlp înălțime (m)","number"],["beam_b","Grindă lățime (m)","number"],
     ["beam_h","Grindă înălțime (m)","number"],["slab_t","Grosime placă (m)","number"],["concrete","Clasa betonului","select"],["diaphragm","Diafragmă","select"]]],
@@ -69,14 +69,39 @@ const FIELDS = [
     ["wall_bays_x","Deschideri cu pereți pe X","text"],["wall_lines_y","Linii cu pereți pe Y","text"],["wall_bays_y","Deschideri cu pereți pe Y","text"],
     ["gravity_frame","Stâlpi și grinzi în afara pereților","checkbox"],["belts","Centuri dummy deasupra pereților","checkbox"],
     ["crack_wall_f","Fisurare pereți f11,f22,f12","number"],["crack_wall_m","Fisurare pereți m11,m22,m12","number"]]],
+  ["Pereți cuplați", [["coupling_bays_x","Deschideri cu grinzi de cuplare pe X","text"],["coupling_bays_y","Deschideri cu grinzi de cuplare pe Y","text"],
+    ["coupling_h","Înălțime grindă de cuplare (m)","number"]]],
+  ["Subsol", [["basement","Niveluri de subsol (0 = fără)","number"],["basement_height","Înălțime subsol (m)","number"],["basement_wall_t","Grosime pereți subsol (m)","number"],
+    ["soil_pressure","Împingerea pământului (kN/m²)","number"]]],
+  ["Forme neregulate", [["shape","Forma în plan","select"],["cut_bays","L: deschideri tăiate","number"],["cut_travei","L: travei tăiate","number"],
+    ["setback_story","Retragere: deasupra etajului","number"],["setback_bays","Retragere: deschideri eliminate","number"],["void_cells","Goluri în planșee (i,j;i,j)","text"]]],
   ["Încărcări (kN/m²)", [["dead_extra","Permanent suplimentar","number"],["live","Utilă","number"],["gamma_g","γG (ULS)","number"],["gamma_q","γQ (ULS)","number"],["psi2","ψ2 utilă (= multiplicator masă)","number"]]],
   ["Rigiditate și analiză", [["crack_col_I","Fisurare stâlpi I","number"],["crack_col_J","Fisurare stâlpi J","number"],["crack_beam_I","Fisurare grinzi I","number"],
     ["crack_beam_J","Fisurare grinzi J","number"],["crack_slab","Fisurare plăci (m11,m22,m12)","number"],["rigid_zone","Factor zonă rigidă","number"],
     ["mesh_max","Mesh max (m)","number"],["modes_per_story","Moduri pe etaj","number"]]],
   ["Acțiunea seismică (P100-1)", [["seismic","Cu acțiune seismică","checkbox"],["ag","ag (în g)","number"],["gamma_I","γI","number"],["beta0","β0","number"],
     ["Tb","TB (s)","number"],["Tc","TC (s)","number"],["Td","TD (s)","number"],["q","q","number"],["lam","λ","number"],["ecc","Excentricitate accidentală","number"],
-    ["damping","Amortizare","number"],["orth","Componentă ortogonală","number"]]]
+    ["damping","Amortizare","number"],["orth","Componentă ortogonală","number"],
+    ["calibrate_static","Calibrează forțele statice după T1 (rulează o analiză)","checkbox"]]]
 ];
+const OPTIONS = {
+  concrete: () => defaults.concrete, diaphragm: () => ["semirigid", "rigid"], shape: () => ["rect", "L", "setback"],
+  structure: () => ["cadre", "pereti_izolati", "pereti_cuplati", "dual", "neregulat"],
+};
+const PRESETS = {
+  cadre: { walls: false, coupling_bays_x: "", coupling_bays_y: "", shape: "rect", void_cells: "" },
+  pereti_izolati: { walls: true, wall_lines_x: "first,last", wall_bays_x: "middle", wall_lines_y: "first,last", wall_bays_y: "middle", coupling_bays_x: "", coupling_bays_y: "", shape: "rect", void_cells: "" },
+  pereti_cuplati: { walls: true, wall_lines_x: "first,last", wall_bays_x: "first,last", wall_lines_y: "none", wall_bays_y: "none", coupling_bays_x: "all", coupling_bays_y: "", shape: "rect", void_cells: "" },
+  dual: { walls: true, wall_lines_x: "first,last", wall_bays_x: "middle", wall_lines_y: "none", wall_bays_y: "none", coupling_bays_x: "", coupling_bays_y: "", shape: "rect", void_cells: "" },
+  neregulat: { walls: false, coupling_bays_x: "", coupling_bays_y: "", shape: "L", cut_bays: 1, cut_travei: 1, void_cells: "1,1" },
+};
+function applyPreset(name) {
+  for (const [k, v] of Object.entries(PRESETS[name])) {
+    const el = $("f_" + k);
+    if (!el) continue;
+    if (el.type === "checkbox") el.checked = !!v; else el.value = v;
+  }
+}
 const $ = (id) => document.getElementById(id);
 let defaults = null;
 
@@ -98,7 +123,8 @@ function renderForm(spec) {
       let el;
       if (type === "select") {
         el = document.createElement("select");
-        for (const o of key === "concrete" ? defaults.concrete : ["semirigid", "rigid"]) el.add(new Option(o, o));
+        for (const o of OPTIONS[key]()) el.add(new Option(o, o));
+        if (key === "structure") el.onchange = () => applyPreset(el.value);
       } else { el = document.createElement("input"); el.type = type; if (type === "number") el.step = "any"; }
       el.id = "f_" + key;
       if (type === "checkbox") el.checked = !!spec[key]; else el.value = spec[key];
@@ -140,7 +166,11 @@ $("build").onclick = async () => {
   $("build").disabled = true; say("Se creează modelul…");
   try {
     const r = await api("/api/build/frames", { spec: readSpec() });
-    say(`Gata în ${r.seconds} s: ${r.objects.stalpi} stâlpi, ${r.objects.grinzi} grinzi, ${r.objects.placi} plăci.\nSalvat: ${r.file}`, "okc");
+    const o = r.objects, extra = [o.pereti ? `${o.pereti} panouri de perete (${r.piers.join(", ")}), ${o.centuri || 0} centuri` : "", o.grinzi_cuplare ? `${o.grinzi_cuplare} grinzi de cuplare` : "",
+      o.pereti_subsol ? `${o.pereti_subsol} pereți de subsol` : ""].filter(Boolean);
+    say(`Gata în ${r.seconds} s: ${o.stalpi} stâlpi, ${o.grinzi} grinzi, ${o.placi} plăci` + (extra.length ? ", " + extra.join(", ") : "") + ".\n"
+      + r.notes.map((n) => "• " + n).join("\n") + `\nSalvat: ${r.file}`
+      + (r.sidecar ? "\nParametrii seismici" + (r.belts ? " și centurile" : "") + " au fost scriși în setările verificatorului." : ""), "okc");
     renderModels((await api("/api/defaults")).models);
   } catch (e) { say(e.message, "err"); }
   await refresh();

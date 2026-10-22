@@ -49,6 +49,7 @@ class FakeTables:
                                                                            "YDirMinusE", "EccRatio", "TopStory", "BotStory", "C", "K"], []),
         }
         self.pending = []
+        self.modal = [dict(Mode=1, Period=0.9, UX=0.0, UY=0.7), dict(Mode=2, Period=0.5, UX=0.6, UY=0.0), dict(Mode=3, Period=0.4, UX=0.0, UY=0.01)]
 
     def seed_frames(self, names, key):
         """Dupa fiecare AddByCoord ETABS adauga cate o linie in tabelele pe bare (decalaje, punct de insertie), o singura data."""
@@ -77,6 +78,13 @@ class FakeTables:
         self.pending = []
         return [0, 0, 0, 0, "", 0]
 
+    def GetTableForDisplayArray(self, key, g, grp, v, f, n, d):
+        if key != "Modal Participating Mass Ratios":
+            return [(), 0, (), 1]
+        rows = self.modal
+        fields = ("Mode", "Period", "UX", "UY")
+        return [0, 0, fields, len(rows), tuple(str(r[f]) for r in rows for f in fields), 0]
+
     def CancelTableEditing(self):
         return 0
 
@@ -85,12 +93,29 @@ class FakeSap:
     def __init__(self, filename=""):
         self.s = {"calls": [], "n": 0}
         self.filename = filename
-        for n in ("File", "PropMaterial", "PropFrame", "PropArea", "FrameObj", "AreaObj", "PointObj", "Diaphragm", "View", "RespCombo", "PierLabel"):
+        for n in ("File", "PropMaterial", "PropFrame", "PropArea", "FrameObj", "AreaObj", "PointObj", "Diaphragm", "View", "RespCombo", "PierLabel", "SpandrelLabel", "Analyze"):
             setattr(self, n, Rec(self.s, n + "."))
         self.LoadPatterns = Rec(self.s, "LoadPatterns.")
         self.LoadCases = type("LC", (), {"ModalEigen": Rec(self.s, "ModalEigen."), "ResponseSpectrum": Rec(self.s, "RS.")})()
-        self.Story = type("St", (), {"GetNameList": staticmethod(lambda: [3, ("Story3", "Story2", "Story1"), 0])})()
+        self.Story = type("St", (), {"GetNameList": staticmethod(lambda: self.story_names()), "SetStories_2": staticmethod(self.set_stories)})()
         self.DatabaseTables = FakeTables(lambda: self.s.get("frames", []))
+
+    def set_stories(self, base, n, names, heights, *rest):
+        self.s["stories"] = (base, list(names), list(heights))
+        return 0
+
+    def story_names(self):
+        if "stories" in self.s:
+            names = tuple(reversed(self.s["stories"][1]))
+            return [len(names), names, 0]
+        return [3, ("Story3", "Story2", "Story1"), 0]
+
+    def GetModelIsLocked(self):
+        return "Analyze.RunAnalysis" in [n for n, _ in self.s["calls"]] and not self.s.get("unlocked")
+
+    def SetModelIsLocked(self, v):
+        self.s["unlocked"] = not v
+        return 0
 
     def GetModelFilename(self):
         return self.filename
@@ -109,6 +134,7 @@ class FrameModelTests(unittest.TestCase):
     def test_counts_and_geometry(self):
         sap = FakeSap()
         spec = FrameSpec(stories=2, bays=2, travei=3, story_height=3.0, span_x=5.0, span_y=4.0)
+        spec.calibrate_static = False
         with tempfile.TemporaryDirectory() as d:
             r = build_frame_model(sap, spec, Path(d) / "m.EDB")
         self.assertEqual(r["objects"], {"stalpi": 24, "grinzi": 34, "placi": 12})
