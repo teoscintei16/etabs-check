@@ -197,3 +197,8 @@ a.btn { display: inline-block; background: var(--surface); border: 1px solid var
 a.btn:hover { border-color: var(--accent); }
 a.btn.disabled { opacity: .5; pointer-events: none; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.fix { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+.fix.preview { display: block; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg); }
+.fix ul { margin: 6px 0; padding-left: 18px; }
+.error-text { color: #9c2f20; }

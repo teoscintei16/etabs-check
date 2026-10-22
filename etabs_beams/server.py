@@ -348,6 +348,70 @@ def v_analyze_needed():
     return run(lambda: analysis_state(_get_session(), _nonlinear()))
 
 
+# ---------------------------------------------------------------- reparatii cu un click
+class FixRequest(BaseModel):
+    fix: str
+    args: dict
+    analyze: bool = False               # dupa aplicare, ruleaza analiza (fara cazurile neliniare, daca nu sunt cerute)
+
+
+def _fix_def(fid: str):
+    from .verifier.fixes import FIXES
+    if fid not in FIXES:
+        raise HTTPException(404, f"Reparație necunoscută: {fid}")
+    return FIXES[fid]
+
+
+@app.post("/api/v/fix/preview")
+def v_fix_preview(req: FixRequest):
+    fx = _fix_def(req.fix)
+    return run(lambda: {"title": fx.title, **fx.preview(_get_session(), req.args)})
+
+
+@app.post("/api/v/fix/apply")
+def v_fix_apply(req: FixRequest):
+    fx = _fix_def(req.fix)
+
+    def _f():
+        s = _get_session()
+        changes = fx.preview(s, req.args)["changes"]
+        undo = fx.apply(s, req.args)
+        _V["snap"], _V["key"], _V["results"] = None, None, {}
+        store = _store()
+        log = store.data.setdefault("fix_log", [])
+        entry = {"id": len(log) + 1, "date": datetime.now().isoformat(timespec="seconds"), "fix": req.fix, "title": fx.title,
+                 "args": req.args, "changes": changes, "undo": undo, "undone": False}
+        log.append(entry)
+        del log[:-50]
+        store.save()
+        return entry
+    entry = run(_f)
+    if req.analyze and _ANALYSIS["state"] != "running":
+        _ANALYSIS.update(state="running", started=time.time(), duration=None, by="fix", message="Se pornește analiza…")
+        _pool.submit(_do_analysis, "fix")
+    return {"id": entry["id"], "changes": entry["changes"], "analyzing": bool(req.analyze)}
+
+
+@app.post("/api/v/fix/undo/{entry_id}")
+def v_fix_undo(entry_id: int):
+    def _f():
+        store = _store()
+        entry = next((e for e in store.data.get("fix_log", []) if e["id"] == entry_id), None)
+        if entry is None or entry["undone"]:
+            raise HTTPException(404, "Reparația nu există sau a fost deja anulată.")
+        _fix_def(entry["fix"]).undo(_get_session(), entry["undo"])
+        entry["undone"] = True
+        _V["snap"], _V["key"], _V["results"] = None, None, {}
+        store.save()
+        return {"undone": entry_id}
+    return run(_f)
+
+
+@app.get("/api/v/fix/log")
+def v_fix_log():
+    return run(lambda: [{k: v for k, v in e.items() if k != "undo"} for e in _store().data.get("fix_log", [])])
+
+
 @app.put("/api/v/settings")
 def v_settings(req: SettingsRequest):
     def _f():

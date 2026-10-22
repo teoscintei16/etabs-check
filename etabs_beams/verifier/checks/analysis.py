@@ -55,7 +55,9 @@ def r10_moduri(ctx):
                 out.append(Finding(ERROR,
                                    f"Cazul modal „{r['Name']}” ({kind}) cere {have} moduri, dar pentru {stories} etaje "
                                    f"sunt recomandate cel puțin {need} ({ctx.p('moduri_per_etaj'):g} pe etaj).",
-                                   [("loadcase", str(r["Name"]))], {"moduri": have, "recomandat": need, "etaje": stories}))
+                                   [("loadcase", str(r["Name"]))], {"moduri": have, "recomandat": need, "etaje": stories},
+                                   fix={"id": "set_modal_modes", "label": f"Setează {need} moduri", "args": {"cases": [{"name": str(r["Name"]), "max": need}]}}
+                                   if kind == "Eigen" else None))
     return out
 
 

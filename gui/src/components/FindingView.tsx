@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useSelection } from "../useSelection";
 import { useVerifier } from "../useVerifier";
 import type { FindingResult } from "../types";
+import FixButton from "./FixButton";
 import ObjectTable from "./ObjectTable";
 
 const SEV_LABEL = { error: "Eroare", warning: "Avertisment", info: "Info" } as const;
@@ -41,6 +42,7 @@ export default function FindingView({ finding }: { finding: FindingResult }) {
             </>
           )}
           {Object.keys(f.data).length > 0 && <pre className="data">{JSON.stringify(f.data, null, 1)}</pre>}
+          {f.fix && !f.waived && <FixButton fix={f.fix} />}
           <div className="waive">
             {f.waived ? (
               <>

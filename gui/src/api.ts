@@ -66,3 +66,8 @@ export const getComparison = (b: string) => call<Comparison>(`/api/v/compare?b=$
 
 export const getAnalysisStatus = () => call<AnalysisStatus>("/api/v/analyze/status");
 export const startAnalysis = () => call<{ started: boolean }>("/api/v/analyze", {});
+
+export const fixPreview = (fix: string, args: Record<string, unknown>) => call<import("./types").FixPreview>("/api/v/fix/preview", { fix, args });
+export const fixApply = (fix: string, args: Record<string, unknown>, analyze: boolean) =>
+  call<{ id: number; changes: unknown[]; analyzing: boolean }>("/api/v/fix/apply", { fix, args, analyze });
+export const fixUndo = (id: number) => call<{ undone: number }>(`/api/v/fix/undo/${id}`, {});

@@ -308,3 +308,7 @@ Teste: 105.
 **Multi-tower:** id-uri de nivel „Tn-Etaj”; `Ctx` are `stories()` (unice), `towers()`, `story_id`, `plain_story`, `tower_of`, `story_ids`. Verificări adaptate: mase/etaj doar unde există elemente, torsiune și rigiditate doar pe turnul tiparului `Tn_…`, r18 pe turnul cel mai înalt, r12/r20 cu tipare „Auto Seismic – User Loads”, **regula 29** (seism pe fiecare turn; turnuri gemene cu forță tăietoare identică = info, copiere suspectă = avertisment).
 **Testat pe instanța multi-tower** (4 turnuri × 14 niveluri): 8 cazuri cu status „nu a pornit” (specx, specy, Push …) → `needs_analysis`; analiza reală NU a fost rulată pe modelul utilizatorului fără acordul acestuia.
 Teste: 121 (`tests/test_verifier_multitower.py`).
+
+## 28. Reparații cu un click (infrastructură + număr de moduri)
+`etabs_beams/verifier/fixes.py`: fiecare reparație are `preview` (fără scriere), `apply` (returnează datele de anulare) și `undo`. O verificare atașează reparația unei constatări prin `Finding.fix = {id, label, args}`. Endpoint-uri: `POST /api/v/fix/preview`, `POST /api/v/fix/apply` (opțional pornește analiza, fără cazurile neliniare), `POST /api/v/fix/undo/{id}`, `GET /api/v/fix/log`; jurnalul (`fix_log`) e salvat lângă .EDB. GUI: buton pe constatare → previzualizare cu valori înainte/după și avertismente → „Aplică în model” → „Anulează reparația”.
+Prima reparație: `set_modal_modes` (r10_moduri, cazuri Eigen; Ritz nu). Aplicarea deblochează modelul (șterge rezultatele). Urmează P-Delta, greutate proprie, zone rigide, diafragme etc. Teste: 125.

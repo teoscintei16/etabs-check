@@ -32,6 +32,7 @@ class Finding:
     objects: list = field(default_factory=list)      # [(tip, nume)] - frame | wall | material | loadpattern | ...
     data: dict = field(default_factory=dict)
     total: int = 0                                   # numarul real de obiecte (daca lista e trunchiata)
+    fix: dict | None = None                          # reparatie cu un click: {"id", "args", "label"} (vezi fixes.py)
 
 
 @dataclass
@@ -195,7 +196,7 @@ def run(snap: Snapshot, store: Sidecar, phase: str | None = None, zones: list[st
             res["findings"].append({
                 "severity": f.severity, "message": f.message, "count": f.total or len(f.objects), "data": f.data,
                 "objects": [_object_dict(snap, o) for o in f.objects[:200]],
-                "keys": keys, "waived": is_waived, "waiver_note": waived.get(keys[0], "") if is_waived else "",
+                "fix": f.fix, "keys": keys, "waived": is_waived, "waiver_note": waived.get(keys[0], "") if is_waived else "",
             })
         res["seconds"] = round(time.time() - t0, 2)
         res["status"] = _status(res)

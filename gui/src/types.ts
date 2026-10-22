@@ -161,6 +161,7 @@ export interface FindingResult {
   count: number;
   data: Record<string, unknown>;
   objects: ObjRef[];
+  fix?: FixOffer | null;
   keys: string[];
   waived: boolean;
   waiver_note: string;
@@ -199,4 +200,17 @@ export interface AnalysisStatus {
   duration?: number | null;
   message: string;
   by: string;
+}
+
+export interface FixOffer {
+  id: string;
+  label: string;
+  args: Record<string, unknown>;
+}
+
+export interface FixPreview {
+  title: string;
+  changes: { what: string; before: unknown; after: unknown }[];
+  warnings: string[];
+  unlocks: boolean;
 }

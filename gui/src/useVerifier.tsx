@@ -11,6 +11,7 @@ interface VerifierCtx {
   running: string;          // eticheta operatiei in curs ("" = liber)
   error: string;
   refresh: () => Promise<void>;
+  clearResults: () => void;
   run: (req: { phase?: Phase; zones?: string[]; ids?: string[]; reload?: boolean }, label: string) => Promise<void>;
   saveBelts: (has: boolean | null, sections: string[]) => Promise<void>;
   saveParam: (key: string, value: number | string | boolean) => Promise<void>;
@@ -71,6 +72,8 @@ export function VerifierProvider({ children }: { children: ReactNode }) {
       clearTimeout(timer);
     };
   }, [refresh]);
+
+  const clearResults = useCallback(() => setResults({}), []);
 
   const startAnalysis = useCallback(async () => {
     setError("");
@@ -161,8 +164,8 @@ export function VerifierProvider({ children }: { children: ReactNode }) {
   }, [guarded, patchWaived]);
 
   const value = useMemo(
-    () => ({ catalog, state, results, analysis, startAnalysis, running, error, refresh, run, saveBelts, saveParam, saveProject, waive, unwaive, setManual }),
-    [catalog, state, results, analysis, startAnalysis, running, error, refresh, run, saveBelts, saveParam, saveProject, waive, unwaive, setManual],
+    () => ({ catalog, state, results, analysis, startAnalysis, running, error, refresh, clearResults, run, saveBelts, saveParam, saveProject, waive, unwaive, setManual }),
+    [catalog, state, results, analysis, startAnalysis, running, error, refresh, clearResults, run, saveBelts, saveParam, saveProject, waive, unwaive, setManual],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
