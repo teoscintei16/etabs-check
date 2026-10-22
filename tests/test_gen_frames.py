@@ -19,6 +19,7 @@ class Rec:
                 self._s["n"] += 1
                 if self._p.startswith("AreaObj"):
                     return [a[1], a[2], a[3], f"A{self._s['n']}", 0]        # ca in COM real: tablourile ref sunt returnate
+                self._s.setdefault("frames", []).append(f"O{self._s['n']}")
                 return [f"O{self._s['n']}", 0]
             if name == "GetPoints":
                 return [f"P{a[0]}a", f"P{a[0]}b", 0]
@@ -26,12 +27,62 @@ class Rec:
         return call
 
 
+class FakeTables:
+    """DatabaseTables fals: ApplyEditedTables inlocuieste tabelul intreg, ca in ETABS."""
+
+    def __init__(self, frames_ref=lambda: []):
+        self.frames_ref = frames_ref
+        self.t = {
+            "Analysis Options - Automatic Mesh Settings for Floors": (["MeshOpt", "Localized", "MergeJoints", "MaxMeshSize"],
+                                                                      [dict(MeshOpt="General", Localized="No", MergeJoints="No", MaxMeshSize="1.25")]),
+            "Analysis Options - Automatic Rectangular Mesh Options for Walls": (["MaxMeshSize"], [dict(MaxMeshSize="1.25")]),
+            "Area Assignments - Floor Auto Mesh Options": (["UniqueName", "MeshOption", "Restraints"],
+                                                           [dict(UniqueName="1", MeshOption="Default", Restraints="No")]),
+            "Frame Assignments - End Length Offsets": (["UniqueName", "OffsetOpt", "OffsetI", "OffsetJ", "RigidFact", "SelfWtOpt"], []),
+            "Mass Source Definition": (["Name", "IsDefault", "IncLateral", "IncVertical", "LumpMass", "SourceSelf", "SourceAdded", "SourceLoads",
+                                        "MoveMass", "LoadPattern", "Multiplier"], [dict(Name="MsSrc1", SourceLoads="No")]),
+            "Functions - Response Spectrum - User Defined": (["Name", "Period", "Value", "DampRatio"], [dict(Name="UnifRS", Period="0", Value="1", DampRatio="0.05")]),
+            "Load Pattern Definitions - Auto Seismic - User Coefficient": (["Name", "IsAuto", "XDir", "XDirPlusE", "XDirMinusE", "YDir", "YDirPlusE",
+                                                                           "YDirMinusE", "EccRatio", "TopStory", "BotStory", "C", "K"], []),
+        }
+        self.pending = []
+
+    def seed_frames(self, names):
+        """Dupa fiecare AddByCoord ETABS adauga o linie in tabelul de decalaje (OffsetOpt Auto, RigidFact 0)."""
+        self.t["Frame Assignments - End Length Offsets"][1][:] = [dict(UniqueName=n, OffsetOpt="Auto", OffsetI="0.25", OffsetJ="0.25", RigidFact="0", SelfWtOpt="Auto") for n in names]
+
+    def GetTableForEditingArray(self, key, g, v, f, n, d):
+        if key == "Frame Assignments - End Length Offsets":
+            self.seed_frames(self.frames_ref())
+        if key not in self.t:
+            return [0, (), 0, (), 1]
+        fields, rows = self.t[key]
+        return [1, tuple(fields), len(rows), tuple(str(r.get(f, "")) for r in rows for f in fields), 0]
+
+    def SetTableForEditingArray(self, key, v, fields, n, data):
+        self.pending.append((key, list(fields), n, list(data)))
+        return [v, 0]
+
+    def ApplyEditedTables(self, log, a, b, c, d, e):
+        for key, fields, n, data in self.pending:
+            self.t[key] = (fields, [dict(zip(fields, data[i * len(fields):(i + 1) * len(fields)])) for i in range(n)])
+        self.pending = []
+        return [0, 0, 0, 0, "", 0]
+
+    def CancelTableEditing(self):
+        return 0
+
+
 class FakeSap:
     def __init__(self, filename=""):
         self.s = {"calls": [], "n": 0}
         self.filename = filename
-        for n in ("File", "PropMaterial", "PropFrame", "PropArea", "FrameObj", "AreaObj", "PointObj", "Diaphragm", "LoadPatterns", "View"):
+        for n in ("File", "PropMaterial", "PropFrame", "PropArea", "FrameObj", "AreaObj", "PointObj", "Diaphragm", "View", "RespCombo"):
             setattr(self, n, Rec(self.s, n + "."))
+        self.LoadPatterns = Rec(self.s, "LoadPatterns.")
+        self.LoadCases = type("LC", (), {"ModalEigen": Rec(self.s, "ModalEigen."), "ResponseSpectrum": Rec(self.s, "RS.")})()
+        self.Story = type("St", (), {"GetNameList": staticmethod(lambda: [3, ("Story3", "Story2", "Story1"), 0])})()
+        self.DatabaseTables = FakeTables(lambda: self.s.get("frames", []))
 
     def GetModelFilename(self):
         return self.filename

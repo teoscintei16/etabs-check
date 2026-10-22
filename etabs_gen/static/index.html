@@ -14,6 +14,8 @@
   h2 { font:600 17px Georgia,serif; margin:0 0 10px; }
   .muted { color:var(--muted); font-size:13px; }
   section { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; margin:16px 0; }
+  h2.grp { font:600 14px Georgia,serif; margin:14px 0 6px; color:var(--muted); }
+  input[type=checkbox] { width:18px; height:18px; }
   .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:12px; }
   label { display:flex; flex-direction:column; gap:3px; font-size:13px; color:var(--muted); }
   input, select { font:inherit; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:6px 8px; }
@@ -44,7 +46,7 @@
 
   <section>
     <h2>2. Structură în cadre</h2>
-    <div class="grid" id="form"></div>
+    <div id="form"></div>
     <div class="row" style="margin-top:14px">
       <button class="primary" id="build" disabled>Creează modelul</button>
       <span class="muted" id="hint">Pornește mai întâi ETABS.</span>
@@ -59,11 +61,17 @@
 </main>
 <script>
 const FIELDS = [
-  ["name","Nume model","text"],["stories","Etaje (x)","number"],["bays","Deschideri (y, pe X)","number"],["travei","Travei (z, pe Y)","number"],
-  ["story_height","Înălțime etaj (m)","number"],["span_x","Deschidere (m)","number"],["span_y","Travee (m)","number"],
-  ["column_b","Stâlp lățime (m)","number"],["column_h","Stâlp înălțime (m)","number"],["beam_b","Grindă lățime (m)","number"],["beam_h","Grindă înălțime (m)","number"],
-  ["slab_t","Grosime placă (m)","number"],["concrete","Clasa betonului","select"],["dead_extra","Permanent suplimentar (kN/m²)","number"],
-  ["live","Utilă (kN/m²)","number"],["diaphragm","Diafragmă","select"]
+  ["Structură", [["name","Nume model","text"],["stories","Etaje (x)","number"],["bays","Deschideri (y, pe X)","number"],["travei","Travei (z, pe Y)","number"],
+    ["story_height","Înălțime etaj (m)","number"],["span_x","Deschidere (m)","number"],["span_y","Travee (m)","number"]]],
+  ["Secțiuni și materiale", [["column_b","Stâlp lățime (m)","number"],["column_h","Stâlp înălțime (m)","number"],["beam_b","Grindă lățime (m)","number"],
+    ["beam_h","Grindă înălțime (m)","number"],["slab_t","Grosime placă (m)","number"],["concrete","Clasa betonului","select"],["diaphragm","Diafragmă","select"]]],
+  ["Încărcări (kN/m²)", [["dead_extra","Permanent suplimentar","number"],["live","Utilă","number"],["gamma_g","γG (ULS)","number"],["gamma_q","γQ (ULS)","number"],["psi2","ψ2 utilă (= multiplicator masă)","number"]]],
+  ["Rigiditate și analiză", [["crack_col_I","Fisurare stâlpi I","number"],["crack_col_J","Fisurare stâlpi J","number"],["crack_beam_I","Fisurare grinzi I","number"],
+    ["crack_beam_J","Fisurare grinzi J","number"],["crack_slab","Fisurare plăci (m11,m22,m12)","number"],["rigid_zone","Factor zonă rigidă","number"],
+    ["mesh_max","Mesh max (m)","number"],["modes_per_story","Moduri pe etaj","number"]]],
+  ["Acțiunea seismică (P100-1)", [["seismic","Cu acțiune seismică","checkbox"],["ag","ag (în g)","number"],["gamma_I","γI","number"],["beta0","β0","number"],
+    ["Tb","TB (s)","number"],["Tc","TC (s)","number"],["Td","TD (s)","number"],["q","q","number"],["lam","λ","number"],["ecc","Excentricitate accidentală","number"],
+    ["damping","Amortizare","number"],["orth","Componentă ortogonală","number"]]]
 ];
 const $ = (id) => document.getElementById(id);
 let defaults = null;
@@ -78,20 +86,28 @@ function say(text, cls = "") { $("msg").className = cls; $("msg").textContent = 
 
 function renderForm(spec) {
   $("form").innerHTML = "";
-  for (const [key, label, type] of FIELDS) {
-    const l = document.createElement("label"); l.textContent = label;
-    let el;
-    if (type === "select") {
-      el = document.createElement("select");
-      const opts = key === "concrete" ? defaults.concrete : ["semirigid", "rigid"];
-      for (const o of opts) el.add(new Option(o, o));
-    } else { el = document.createElement("input"); el.type = type; if (type === "number") el.step = "any"; }
-    el.id = "f_" + key; el.value = spec[key]; l.append(el); $("form").append(l);
+  for (const [title, fields] of FIELDS) {
+    const h = document.createElement("h2"); h.textContent = title; h.className = "grp"; $("form").append(h);
+    const g = document.createElement("div"); g.className = "grid"; $("form").append(g);
+    for (const [key, label, type] of fields) {
+      const l = document.createElement("label"); l.textContent = label;
+      let el;
+      if (type === "select") {
+        el = document.createElement("select");
+        for (const o of key === "concrete" ? defaults.concrete : ["semirigid", "rigid"]) el.add(new Option(o, o));
+      } else { el = document.createElement("input"); el.type = type; if (type === "number") el.step = "any"; }
+      el.id = "f_" + key;
+      if (type === "checkbox") el.checked = !!spec[key]; else el.value = spec[key];
+      l.append(el); g.append(l);
+    }
   }
 }
 function readSpec() {
   const s = {};
-  for (const [key, , type] of FIELDS) { const v = $("f_" + key).value; s[key] = type === "number" ? Number(v) : v; }
+  for (const [, fields] of FIELDS) for (const [key, , type] of fields) {
+    const el = $("f_" + key);
+    s[key] = type === "checkbox" ? el.checked : type === "number" ? Number(el.value) : el.value;
+  }
   return s;
 }
 function renderModels(models) {

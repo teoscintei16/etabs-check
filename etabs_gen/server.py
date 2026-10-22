@@ -39,6 +39,19 @@ def _alive() -> bool:
         return False
 
 
+def _write_verifier_settings(model_file: str | None, project: dict) -> str | None:
+    """Parametrii proiectului merg in setarile verificatorului (<model>.EDB.checks.json), ca sa nu fie reintroductii de mana."""
+    if not model_file or not project:
+        return None
+    try:
+        from etabs_beams.verifier.store import Sidecar
+    except ImportError:
+        return None
+    store = Sidecar(model_file)
+    store.set_project(project)
+    return str(store.path)
+
+
 @app.get("/")
 def index():
     return FileResponse(STATIC / "index.html")
@@ -92,6 +105,7 @@ def build_frames(req: BuildRequest):
         t0 = time.time()
         res = build_frame_model(_S["obj"].SapModel, spec, default_path(spec, OUT_DIR))
         res["seconds"] = round(time.time() - t0, 1)
+        res["sidecar"] = _write_verifier_settings(res["file"], res["project"])
         _S["models"].append({"file": res["file"], "objects": res["objects"], "name": spec.name})
         return res
     return run(_f)

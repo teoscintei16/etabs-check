@@ -6,6 +6,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from .connect import KN_M_C, GenError, assert_safe_to_overwrite, ok
+from .rules import (apply_combinations, apply_cracking, apply_mass_source, apply_mesh, apply_modal, apply_rigid_zones, apply_seismic,
+                    assert_finite)
 
 # clasa betonului -> (fck [kN/m2], Ecm [kN/m2]) conform EN 1992-1-1
 CONCRETE = {"C20/25": (20e3, 30e6), "C25/30": (25e3, 31e6), "C30/37": (30e3, 33e6), "C35/45": (35e3, 34e6), "C40/50": (40e3, 35e6)}
@@ -29,9 +31,34 @@ class FrameSpec:
     beam_h: float = 0.60
     slab_t: float = 0.15
     concrete: str = "C25/30"
-    dead_extra: float = 1.5                 # kN/m2 permanent suplimentar (finisaje)
+    dead_extra: float = 3.0                 # kN/m2 permanent suplimentar (finisaje + compartimentari)
     live: float = 2.0                       # kN/m2 utila
     diaphragm: str = "semirigid"            # semirigid | rigid
+    # --- rigiditate fisurata (EC8 / P100-1): factori pe sectiuni
+    crack_col_I: float = 0.7
+    crack_col_J: float = 0.1
+    crack_beam_I: float = 0.5
+    crack_beam_J: float = 0.1
+    crack_slab: float = 0.5                 # m11 = m22 = m12
+    rigid_zone: float = 0.75                # factorul zonei rigide la capete
+    mesh_max: float = 0.5                   # m, dimensiunea maxima aproximativa a elementelor
+    modes_per_story: int = 3
+    # --- actiunea seismica (P100-1): se completeaza de utilizator, valorile implicite sunt doar orientative
+    ag: float = 0.20                        # in multipli de g
+    gamma_I: float = 1.0
+    beta0: float = 2.5
+    Tb: float = 0.07
+    Tc: float = 0.7
+    Td: float = 3.0
+    q: float = 3.5
+    lam: float = 0.85
+    ecc: float = 0.05
+    damping: float = 0.05
+    psi2: float = 0.3                       # ψ2 al utilei = multiplicatorul ei in sursa de masa
+    orth: float = 0.3
+    gamma_g: float = 1.35
+    gamma_q: float = 1.5
+    seismic: bool = True                    # False = fara actiune seismica (doar gravitational)
 
     def validate(self) -> "FrameSpec":
         if not (1 <= self.stories <= 60):
@@ -45,6 +72,13 @@ class FrameSpec:
             raise GenError(f"Clasă de beton necunoscută: {self.concrete}")
         if self.diaphragm not in ("semirigid", "rigid"):
             raise GenError("Diafragma poate fi „semirigid” sau „rigid”.")
+        for f in ("crack_col_I", "crack_col_J", "crack_beam_I", "crack_beam_J", "crack_slab", "rigid_zone"):
+            if not 0 < getattr(self, f) <= 1:
+                raise GenError(f"„{f}” trebuie să fie între 0 (exclusiv) și 1.")
+        if self.mesh_max <= 0 or self.modes_per_story < 1:
+            raise GenError("Dimensiunea mesh-ului și numărul de moduri pe etaj trebuie să fie pozitive.")
+        if self.seismic:
+            assert_finite(self)
         return self
 
     @property
@@ -92,21 +126,23 @@ def build_frame_model(sap, spec: FrameSpec, out_path: str | Path | None = None) 
     zs = [0.0] + [spec.bottom + k * spec.story_height for k in range(spec.stories)]
     count = {"stalpi": 0, "grinzi": 0, "placi": 0}
     base_points: list[str] = []
+    frames: list[str] = []
 
     for k in range(1, len(zs)):
         for x in xs:
             for y in ys:
                 name = ok(sap.FrameObj.AddByCoord(x, y, zs[k - 1], x, y, zs[k], "", sec["column"]), "AddByCoord (stâlp)")[0]
+                frames.append(name)
                 count["stalpi"] += 1
                 if k == 1:
                     base_points.append(ok(sap.FrameObj.GetPoints(name), "GetPoints")[0])
         for y in ys:
             for a, b in zip(xs, xs[1:]):
-                ok(sap.FrameObj.AddByCoord(a, y, zs[k], b, y, zs[k], "", sec["beam"]), "AddByCoord (grindă X)")
+                frames.append(ok(sap.FrameObj.AddByCoord(a, y, zs[k], b, y, zs[k], "", sec["beam"]), "AddByCoord (grindă X)")[0])
                 count["grinzi"] += 1
         for x in xs:
             for a, b in zip(ys, ys[1:]):
-                ok(sap.FrameObj.AddByCoord(x, a, zs[k], x, b, zs[k], "", sec["beam"]), "AddByCoord (grindă Y)")
+                frames.append(ok(sap.FrameObj.AddByCoord(x, a, zs[k], x, b, zs[k], "", sec["beam"]), "AddByCoord (grindă Y)")[0])
                 count["grinzi"] += 1
 
     sap.Diaphragm.Delete("D1")                # NewGridOnly defineste deja o diafragma D1 (rigida): o redefinim cu tipul cerut
@@ -128,14 +164,31 @@ def build_frame_model(sap, spec: FrameSpec, out_path: str | Path | None = None) 
 
     for p in base_points:
         ok(sap.PointObj.SetRestraint(p, [True] * 6), "SetRestraint")
-    ok(sap.View.RefreshView(0, False), "RefreshView") if hasattr(sap, "View") else None
+
+    notes = [apply_cracking(sap, spec, sec), apply_rigid_zones(sap, frames, spec.rigid_zone), apply_mesh(sap, spec.mesh_max),
+             apply_mass_source(sap, spec, bool(spec.dead_extra)), apply_modal(sap, spec)]
+    static, cases = [], []
+    if spec.seismic:
+        top = ok(sap.Story.GetNameList(), "Story.GetNameList")[1][0]            # primul = nivelul cel mai de sus
+        static, cases, extra = apply_seismic(sap, spec, top)
+        notes += extra
+    notes.append(f"{apply_combinations(sap, spec, bool(spec.dead_extra), static, cases)} combinații (ULS, SLS, seismice)")
+    if hasattr(sap, "View"):
+        sap.View.RefreshView(0, False)
 
     path = None
     if out_path:
         path = Path(out_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         ok(sap.File.Save(str(path)), "File.Save")
-    return {"spec": asdict(spec), "sections": sec, "objects": count, "base_nodes": len(base_points), "file": str(path) if path else None}
+    return {"spec": asdict(spec), "sections": sec, "objects": count, "base_nodes": len(base_points), "file": str(path) if path else None,
+            "notes": notes, "project": project_params(spec) if spec.seismic else {}}
+
+
+def project_params(spec: FrameSpec) -> dict:
+    """Parametrii proiectului pentru Setarile verificatorului (aceleasi valori ca in model)."""
+    return {"ag": spec.ag, "gamma_I": spec.gamma_I, "beta0": spec.beta0, "Tb": spec.Tb, "Tc": spec.Tc, "Td": spec.Td, "q": spec.q,
+            "lambda_mfse": spec.lam, "ecc": spec.ecc, "basement": "nu", "tip_cladire": "rezidential_cadre"}
 
 
 def default_path(spec: FrameSpec, out_dir: Path) -> Path:

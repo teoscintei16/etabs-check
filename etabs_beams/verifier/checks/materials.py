@@ -89,6 +89,39 @@ def r19_unitati(ctx):
 
 
 _FACTOR = re.compile(r"^([0-9]*\.?[0-9]+)\s*\*")
+_FRAME_SEC_TABLES = ("Frame Section Property Definitions - Concrete Rectangular", "Frame Section Property Definitions - Concrete Circle",
+                     "Frame Section Property Definitions - Concrete Tee", "Frame Section Property Definitions - Steel I/Wide Flange")
+_SHELL_SEC_TABLES = ("Slab Property Definitions", "Wall Property Definitions - Specified", "Deck Property Definitions")
+
+
+def _num(v) -> float | None:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def section_modifiers(t):
+    """Modificatorii de rigiditate definiti direct pe sectiuni: (sectiuni_cadre_cu_modificatori, bare_cu_I_redus_dar_J=1, are_shell_modificat)."""
+    frame_mod, bad_j = [], []
+    for key in _FRAME_SEC_TABLES:
+        df = t(key)
+        if df.empty:
+            continue
+        for _, r in df.iterrows():
+            vals = {k: _num(r.get(k)) for k in ("AMod", "A2Mod", "A3Mod", "JMod", "I2Mod", "I3Mod")}
+            if any(v is not None and abs(v - 1.0) > 1e-9 for v in vals.values()):
+                frame_mod.append(str(r["Name"]))
+            inertia = [v for k, v in vals.items() if k in ("I2Mod", "I3Mod") and v is not None]
+            if inertia and min(inertia) < 1.0 and (vals["JMod"] is None or vals["JMod"] >= 1.0):
+                bad_j.append(str(r["Name"]))
+    shell = False
+    for key in _SHELL_SEC_TABLES:
+        df = t(key)
+        cols = [c for c in df.columns if c.endswith("Mod") and c[0] in "fmv"] if not df.empty else []
+        if cols and any((_num(v) is not None and abs(_num(v) - 1.0) > 1e-9) for c in cols for v in df[c]):
+            shell = True
+    return frame_mod, bad_j, shell
 
 
 def _mod_cols(df):
@@ -105,7 +138,8 @@ def r1_fisurare(ctx):
     t = ctx.snap.table
     defs, assign = t("Frame Property Modifier Definitions"), t("Frame Assignments - Property Modifiers")
     shell_defs, shell_assign = t("Shell Property Modifier Definitions"), t("Area Assignments - Stiffness Modifiers")
-    have_mods = not (defs.empty and assign.empty and shell_defs.empty and shell_assign.empty)
+    sec_frame, sec_bad_j, sec_shell = section_modifiers(t)
+    have_mods = not (defs.empty and assign.empty and shell_defs.empty and shell_assign.empty) or bool(sec_frame) or sec_shell
     mats = t("Material Properties - General")
     factor_mats = []
     if not mats.empty:
@@ -125,6 +159,9 @@ def r1_fisurare(ctx):
     else:
         how = ("materiale cu factor în nume: " + ", ".join(f"{n} (×{f:g})" for n, f in factor_mats)) if factor_mats             else "modificatori de secțiune"
         out.append(Finding(INFO, f"Rigiditatea fisurată este modelată prin {how}."))
+    if sec_bad_j:
+        out.append(Finding(WARNING, f"{len(sec_bad_j)} secțiuni reduc inerția la încovoiere, dar lasă rigiditatea la torsiune J = 1: "
+                                    "grinzile pot atrage torsiune de compatibilitate excesivă.", [("section", n) for n in sec_bad_j]))
     if not defs.empty:
         c = _mod_cols(defs)
         if c["J"] and (c["I22"] or c["I33"]):
