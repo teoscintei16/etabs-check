@@ -91,6 +91,27 @@ def r2_rezemare(ctx):
     return out
 
 
+def _diaphragm_proposals(ctx, asg, dsg, miss):
+    """Diafragma fiecarei placi fara diafragma = cea mai frecventa dintre placile cu diafragma de la acelasi nivel (si turn)."""
+    from collections import Counter
+    story_of = {sname(r["UniqueName"]): str(r["Story"]) for _, r in asg.iterrows()}
+    by_story: dict[str, Counter] = {}
+    if not dsg.empty:
+        for _, r in dsg.iterrows():
+            d = str(r["Diaphragm"]).strip()
+            if d not in ("None", ""):
+                by_story.setdefault(story_of.get(sname(r["UniqueName"]), ""), Counter())[d] += 1
+    assign, unknown = [], []
+    for _, r in miss.iterrows():
+        name = sname(r["UniqueName"])
+        c = by_story.get(str(r["Story"]))
+        if c:
+            assign.append({"name": name, "diaphragm": c.most_common(1)[0][0]})
+        else:
+            unknown.append(name)
+    return assign, unknown
+
+
 @check("r3_diafragme", 3, "Diafragme și tipul elementelor de placă",
        params=[Param("fara_diafragma_exceptii", "radier", "Secțiuni de placă fără diafragmă acceptate (text din nume)", "", "text")])
 def r3_diafragme(ctx):
@@ -120,10 +141,13 @@ def r3_diafragme(ctx):
         if skip:
             miss = miss[~miss["SectProp"].astype(str).str.lower().str.contains(re.escape(skip))]
         if len(miss):
+            assign, unknown = _diaphragm_proposals(ctx, asg, dsg, miss)
+            extra = f" Pentru {len(unknown)} nu există o diafragmă de referință la același nivel." if unknown else ""
             out.append(Finding(ERROR, f"{len(miss)} plăci nu sunt asignate niciunei diafragme (rămân fără legătură rigidă/semi-rigidă în plan): "
-                                      "fără diafragmă nu se transmit forțele laterale și nu se pot calcula CM/CR.",
+                                      "fără diafragmă nu se transmit forțele laterale și nu se pot calcula CM/CR." + extra,
                                [("area", sname(r["UniqueName"]), {"label": str(r["Label"]), "story": str(r["Story"]), "section": str(r["SectProp"])})
-                                for _, r in miss.iterrows()]))
+                                for _, r in miss.iterrows()],
+                               fix={"id": "assign_diaphragm", "label": f"Asignează diafragma la {len(assign)} plăci", "args": {"assign": assign}} if assign else None))
     return out
 
 

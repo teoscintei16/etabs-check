@@ -22,9 +22,17 @@ class Fix:
 FIXES: dict[str, Fix] = {}
 
 
+def _in_units(fn):
+    """Ruleaza functia cu unitatile kN, m (si le restaureaza), ca tabelele si valorile numerice sa fie in unitatile asteptate."""
+    def wrapped(session, arg):
+        with session.units():
+            return fn(session, arg)
+    return wrapped
+
+
 def fix(id: str, title: str):
     def deco(cls):
-        FIXES[id] = Fix(id, title, cls.preview, cls.apply, cls.undo)
+        FIXES[id] = Fix(id, title, _in_units(cls.preview), _in_units(cls.apply), _in_units(cls.undo))
         return cls
     return deco
 
@@ -81,3 +89,6 @@ class SetModalModes:
         _unlock(sap)
         for c in undo["cases"]:
             ok(sap.LoadCases.ModalEigen.SetNumberModes(c["name"], c["max"], c["min"]))
+
+
+from . import fixes_more  # noqa: E402,F401  (inregistreaza reparatiile grupelor 1 si 2)

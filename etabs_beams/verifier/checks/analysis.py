@@ -19,7 +19,8 @@ def r21_dof_diafragme(ctx):
         off = [d for d in _DOF if d in dof.columns and not yes(dof.iloc[0][d])]
         if off:
             out.append(Finding(ERROR, f"Gradele de libertate dezactivate: {', '.join(off)}. "
-                                      "Pentru o clădire 3D trebuie active toate cele 6.", data={"dezactivate": off}))
+                                      "Pentru o clădire 3D trebuie active toate cele 6.", data={"dezactivate": off},
+                               fix={"id": "set_dof_all", "label": "Activează toate gradele de libertate", "args": {}}))
     dia = ctx.snap.table("Diaphragm Definitions")
     assigned = len(ctx.snap.table("Area Assignments - Diaphragms")) + len(ctx.snap.table("Joint Assignments - Diaphragms"))
     if dia.empty:
@@ -64,6 +65,10 @@ def r10_moduri(ctx):
 _AXES = {"X": re.compile(r"^(UX|U1)$", re.I), "Y": re.compile(r"^(UY|U2)$", re.I), "Z": re.compile(r"^(UZ|U3)$", re.I)}
 
 
+def _ritz_fix(name, missing) -> dict:
+    return {"id": "ritz_add_accel", "label": f"Adaugă accelerațiile {', '.join(missing)}", "args": {"cases": [{"name": str(name), "missing": list(missing)}]}}
+
+
 @check("r10_ritz", 10, "Caz Ritz cu accelerații pe X, Y și Z ca vectori de pornire")
 def r10_ritz(ctx):
     df = ctx.snap.table("Modal Case Definitions - Ritz")
@@ -78,9 +83,10 @@ def r10_ritz(ctx):
         miss = [ax for ax, rx in _AXES.items() if not any(rx.match(a) for a in accel)]
         if "X" in miss or "Y" in miss:
             out.append(Finding(ERROR, f"Cazul Ritz „{name}” nu include accelerația pe {', '.join(m for m in miss if m != 'Z')} "
-                                      "ca vector de încărcare de pornire.", [("loadcase", str(name))], {"lipsa": miss}))
+                                      "ca vector de încărcare de pornire.", [("loadcase", str(name))], {"lipsa": miss},
+                               fix=_ritz_fix(name, miss)))
         elif "Z" in miss:
-            out.append(Finding(WARNING, f"Cazul Ritz „{name}” nu include accelerația pe Z.", [("loadcase", str(name))]))
+            out.append(Finding(WARNING, f"Cazul Ritz „{name}” nu include accelerația pe Z.", [("loadcase", str(name))], fix=_ritz_fix(name, miss)))
     return out
 
 

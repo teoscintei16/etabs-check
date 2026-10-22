@@ -5,7 +5,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from ..registry import ERROR, INFO, WARNING, Finding, Param, check
-from .util import col, sname
+from .util import col, sname, yes
 
 
 @check("r5_noduri", 5, "Noduri duplicate/prea apropiate și coordonate cu zecimale parazite",
@@ -38,35 +38,62 @@ def r5_noduri(ctx):
     dev = np.abs(xyz - np.round(xyz, 3))
     bad = np.where(((dev > 1e-9) & (dev <= tol)).any(axis=1))[0]
     if len(bad):
+        rows = []
+        for i in bad:
+            for k, ax in enumerate("XYZ"):
+                if 1e-9 < dev[i, k] <= tol:
+                    rows.append({"name": names[int(i)], "label": str(j.loc[i, "ObjLabel"]), "story": str(j.loc[i, "Story"]), "axis": ax,
+                                 "current": float(xyz[i, k]), "value": float(round(xyz[i, k], 3)) + 0.0})
+        zero = sum(1 for r in rows if r["value"] == 0)
         out.append(Finding(WARNING, f"{len(bad)} noduri au coordonate cu zecimale parazite (abatere ≤ {tol:g} m față de grila de 1 mm), "
-                                    "tipic după desen din AutoCAD.", [obj(int(i)) for i in bad]))
+                                    f"tipic după desen din AutoCAD ({zero} valori aproape de 0, {len(rows) - zero} de rotunjit).", [obj(int(i)) for i in bad],
+                           {"valori": [f"{r['name']} {r['axis']}={r['current']!r}" for r in rows[:30]]},
+                           fix={"id": "move_nodes", "label": f"Corectează {len(rows)} coordonate", "args": {"rows": rows}}))
     return out
 
 
 @check("r5_mesh", 5, "Setările de mesh pentru plăci și pereți",
-       params=[Param("mesh_max", 1.0, "Dimensiunea maximă recomandată a elementelor", "m")])
+       params=[Param("mesh_max", 0.5, "Dimensiunea maximă aproximativă a elementelor (standard)", "m")])
 def r5_mesh(ctx):
     out = []
     lim = ctx.p("mesh_max")
-    for key, what in (("Analysis Options - Automatic Mesh Settings for Floors", "plăci"),
-                      ("Analysis Options - Automatic Rectangular Mesh Options for Walls", "pereți")):
-        df = ctx.snap.table(key)
-        c = col(df, "MaxMeshSize") if not df.empty else None
-        if c and float(df.iloc[0][c]) > lim:
-            out.append(Finding(WARNING, f"Dimensiunea maximă a mesh-ului pentru {what} este {float(df.iloc[0][c]):g} m (> {lim:g} m).",
-                               [("mesh", key)]))
-    for key, normal in (("Area Assignments - Floor Auto Mesh Options", {"default"}),
-                        ("Area Assignments - Wall Auto Mesh Options", {"auto rectangular", "default"})):
+
+    def fx(scope, label):
+        return {"id": "apply_mesh_standard", "label": label, "args": {"scope": scope, "mesh_max": lim}}
+
+    fl = ctx.snap.table("Analysis Options - Automatic Mesh Settings for Floors")
+    if not fl.empty:
+        r = fl.iloc[0]
+        c = col(fl, "MaxMeshSize")
+        bad = []
+        if str(r.get("MeshOpt", "")).strip().lower() != "rectangular":
+            bad.append(f"opțiunea de mesh este „{r.get('MeshOpt')}” (standard: Rectangular)")
+        for f, label in (("Localized", "Use Localized Meshing"), ("MergeJoints", "Merge Joints")):
+            if f in fl.columns and not yes(r[f]):
+                bad.append(f"„{label}” este dezactivat")
+        if c and abs(float(r[c]) - lim) > 1e-9:
+            bad.append(f"dimensiunea maximă este {float(r[c]):g} m (standard: {lim:g} m)")
+        if bad:
+            out.append(Finding(WARNING, "Setările globale de mesh ale plăcilor diferă de standard: " + "; ".join(bad) + ".",
+                               [("mesh", "Floors")], fix=fx("floor_global", "Aplică standardul plăcilor")))
+    wl = ctx.snap.table("Analysis Options - Automatic Rectangular Mesh Options for Walls")
+    c = col(wl, "MaxMeshSize") if not wl.empty else None
+    if c and abs(float(wl.iloc[0][c]) - lim) > 1e-9:
+        out.append(Finding(WARNING, f"Dimensiunea maximă a mesh-ului pentru pereți este {float(wl.iloc[0][c]):g} m (standard: {lim:g} m).",
+                           [("mesh", "Walls")], fix=fx("wall_global", "Aplică dimensiunea standard (pereți)")))
+    for key, what, scope in (("Area Assignments - Floor Auto Mesh Options", "plăci", "floor_areas"),
+                             ("Area Assignments - Wall Auto Mesh Options", "pereți", "wall_areas")):
         df = ctx.snap.table(key)
         if df.empty:
             continue
-        mo = col(df, "MeshOption")
-        odd = df[~df[mo].astype(str).str.lower().isin(normal)]
+        mo, rs = col(df, "MeshOption"), col(df, "Restraints")
+        odd = df[(df[mo].astype(str).str.lower() != "default") | (~df[rs].map(yes) if rs else False)]
         if len(odd):
             objs = [("area", sname(r["UniqueName"]), {"label": str(r["Label"]), "story": str(r["Story"]), "mesh": str(r[mo])})
                     for _, r in odd.iterrows()]
-            out.append(Finding(INFO, f"{len(odd)} arii au o opțiune de mesh diferită de cea implicită "
-                                     f"({', '.join(sorted(set(odd[mo].astype(str))))}).", objs))
+            out.append(Finding(INFO, f"{len(odd)} arii ({what}) au opțiuni de mesh diferite de standard (opțiune „Default” și "
+                                     f"„Add Restraints” activ; acum: {', '.join(sorted(set(odd[mo].astype(str))))}).", objs,
+                               fix=fx(scope, f"Aplică standardul la {len(odd)} {what}")))
     return out
 
 

@@ -14,20 +14,33 @@ def r22_greutate_proprie(ctx):
         return [Finding(INFO, "Tabela cu tiparele de încărcare nu a putut fi citită.")]
     sw = lp[lp["SelfWtMult"].fillna(0) != 0]
     names = [("loadpattern", n) for n in sw["Name"]]
+    dead = [str(n) for n, t in zip(lp["Name"], lp["Type"]) if str(t) == "Dead"]
+    primary_dead = next((n for n in dead if n.lower() in ("dead", "g", "permanent", "permanenta")), dead[0] if dead else None)
+
+    def fx(target: dict, label: str) -> dict:
+        return {"id": "set_selfwt", "label": label, "args": {"set": target}}
+
     out = []
     if sw.empty:
         out.append(Finding(ERROR, "Niciun tipar nu include greutatea proprie (multiplicator 0 peste tot): "
-                                  "structura „plutește” fără greutatea elementelor."))
+                                  "structura „plutește” fără greutatea elementelor.",
+                           fix=fx({primary_dead: 1.0}, f"Setează 1 la „{primary_dead}”") if primary_dead else None))
     elif len(sw) > 1:
+        keep = next((str(n) for n, t in zip(sw["Name"], sw["Type"]) if str(t) == "Dead" and str(n) == primary_dead), None)             or next((str(n) for n, t in zip(sw["Name"], sw["Type"]) if str(t) == "Dead"), None)
+        target = {str(n): 0.0 for n in sw["Name"] if str(n) != keep} if keep else None
+        if target is not None:
+            target[keep] = 1.0
         out.append(Finding(ERROR, "Greutatea proprie este inclusă în mai multe tipare (risc de dublare): "
                                   "multiplicatorul trebuie să fie 1 doar la tiparul permanent principal.", names,
-                           {n: float(m) for n, m in zip(sw["Name"], sw["SelfWtMult"])}))
+                           {n: float(m) for n, m in zip(sw["Name"], sw["SelfWtMult"])},
+                           fix=fx(target, f"Păstrează doar „{keep}” (1), restul la 0") if target else None))
     else:
         row = sw.iloc[0]
         if row["Type"] != "Dead":
             out.append(Finding(WARNING, f"Greutatea proprie este în tiparul „{row['Name']}”, care nu este de tip Dead.", names))
         if abs(float(row["SelfWtMult"]) - 1.0) > 1e-9:
-            out.append(Finding(WARNING, f"Multiplicatorul greutății proprii este {float(row['SelfWtMult']):g}, nu 1.", names))
+            out.append(Finding(WARNING, f"Multiplicatorul greutății proprii este {float(row['SelfWtMult']):g}, nu 1.", names,
+                               fix=fx({str(row["Name"]): 1.0}, f"Setează 1 la „{row['Name']}”")))
     return out
 
 
@@ -133,6 +146,9 @@ _NAME_RULES = [
 ]
 
 
+_PROPOSED = {"zăpadă": "Snow", "vânt": "Wind", "seism": "Quake", "temperatură": "Temperature", "utilă": "Live"}
+
+
 @check("r7_tipare", 7, "Tipare de încărcare: tip corect și încărcări asignate")
 def r7_tipare(ctx):
     t = ctx.snap.table
@@ -157,9 +173,11 @@ def r7_tipare(ctx):
         for rx, ok_types, label in _NAME_RULES:
             if rx.search(n):
                 if ty not in ok_types:
-                    wrong.append((n, f"numele sugerează {label}, tipul este {ty}"))
+                    wrong.append((n, f"numele sugerează {label}, tipul este {ty}", _PROPOSED[label]))
                 break
     if wrong:
         out.append(Finding(WARNING, f"{len(wrong)} tipare au un tip care nu corespunde numelui (ex. zăpadă sau încărcare utilă definite ca Dead).",
-                           [("loadpattern", n) for n, _w in wrong], {n: w for n, w in wrong}))
+                           [("loadpattern", n) for n, _w, _t in wrong], {n: w for n, w, _t in wrong},
+                           fix={"id": "set_load_types", "label": "Corectează tipul tiparelor",
+                                "args": {"rows": [{"name": n, "type": t} for n, _w, t in wrong]}}))
     return out

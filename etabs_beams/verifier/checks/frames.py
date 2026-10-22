@@ -43,18 +43,20 @@ def r11_grinzi_secundare(ctx):
     model = ctx.snap.model
     rel = _releases(ctx)
     hits = end_on_beam_hits(model, model.beam_names)
-    no_release = []
+    no_release, ends = [], []
     for f_name, node, _g in hits:
         f = model.frames[f_name]
         end = "I" if node == f.p1 else "J"
         if not _end_released(rel.get(f_name), end):
             no_release.append(f_name)
+            ends.append({"name": f_name, "end": end})
     if not no_release:
         return []
     uniq = list(dict.fromkeys(no_release))
     return [Finding(INFO, f"{len(uniq)} grinzi secundare se reazemă pe interiorul altor grinzi fără eliberare sau partial fixity "
                           "la capătul respectiv: torsiunea de compatibilitate poate încărca grinda principală "
-                          "(recomandat: partial fixity la beton armat).", frame_objects(uniq))]
+                          "(recomandat: partial fixity la beton armat).", frame_objects(uniq),
+                    fix={"id": "release_secondary", "label": f"Eliberează M3 la {len(ends)} capete", "args": {"ends": ends, "k": 0.0}})]
 
 
 @check("r25_eliberari", 25, "Eliberări care creează mecanisme (torsiune eliberată la ambele capete)")
@@ -108,7 +110,9 @@ def r13_zone_rigide(ctx):
         out.append(Finding(WARNING,
                            f"{len(beams)} grinzi și {len(cols)} stâlpi nu au zone rigide la capete (factor < {lo:g}): "
                            "deschiderea grinzii se calculează din axul stâlpului, structura devine prea flexibilă.",
-                           frame_objects(beams + cols), {"grinzi": len(beams), "stalpi": len(cols)}))
+                           frame_objects(beams + cols), {"grinzi": len(beams), "stalpi": len(cols)},
+                           fix={"id": "set_rigid_factor", "label": f"Setează zone rigide ({len(beams) + len(cols)} bare)",
+                                "args": {"frames": beams + cols, "factor": 0.75}}))
     return out
 
 

@@ -202,3 +202,10 @@ a.btn.disabled { opacity: .5; pointer-events: none; }
 .fix.preview { display: block; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg); }
 .fix ul { margin: 6px 0; padding-left: 18px; }
 .error-text { color: #9c2f20; }
+.fix-rows { max-height: 280px; overflow: auto; margin: 8px 0; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+.fix-rows table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.fix-rows th, .fix-rows td { padding: 3px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+.fix-rows input[type="number"] { width: 110px; }
+.fix-rows tr.off { opacity: .45; }
+.fix-input { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+.fix-input input { width: 110px; }

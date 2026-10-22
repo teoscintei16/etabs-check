@@ -415,13 +415,27 @@ def r28_pier_pe_corpuri(ctx):
     comp_of = df["comp"].to_dict()
     first = a.drop_duplicates("ObjName")
     obj_comp = {sname(r["ObjName"]): comp_of.get(str(r["ElmJt1"])) for _, r in first.iterrows()}
+    obj_story = {sname(r["ObjName"]): str(r["Story"]) for _, r in first.iterrows()}
     per: dict[str, set] = {}
+    members: list[tuple[str, str, int]] = []              # (arie, eticheta, corp)
     for _, r in pl.iterrows():
         c = obj_comp.get(sname(r["UniqueName"]))
         if c in big:
             per.setdefault(str(r["PierName"]), set()).add(int(c))
+            members.append((sname(r["UniqueName"]), str(r["PierName"]), int(c)))
     dup = {k: sorted(v) for k, v in per.items() if len(v) > 1}
     if not dup:
         return []
+    # prefix per corp: turnul dominant al corpului (daca e unic intre corpuri), altfel C<n>
+    from collections import Counter
+    towers_of: dict[int, Counter] = {}
+    for name, _p, c in members:
+        t = ctx.tower_of(obj_story.get(name, ""))
+        if t:
+            towers_of.setdefault(c, Counter())[t] += 1
+    main = {c: cnt.most_common(1)[0][0] for c, cnt in towers_of.items()}
+    prefix = {c: (main[c] if c in main and list(main.values()).count(main[c]) == 1 else f"C{c}") for c in {m[2] for m in members}}
+    renames = [{"name": n, "pier": f"{prefix[c]}_{p}"} for n, p, c in members if p in dup]
     return [Finding(WARNING, f"{len(dup)} etichete Pier sunt folosite în mai multe corpuri independente: " + ", ".join(sorted(dup)[:12]) +
-                    ". Fiecare turn trebuie să aibă etichete diferite.", [("pier", k) for k in sorted(dup)], {k: f"corpuri {v}" for k, v in dup.items()})]
+                    ". Fiecare turn trebuie să aibă etichete diferite.", [("pier", k) for k in sorted(dup)], {k: f"corpuri {v}" for k, v in dup.items()},
+                    fix={"id": "rename_piers", "label": f"Prefixează {len(renames)} arii cu turnul/corpul", "args": {"renames": renames}})]

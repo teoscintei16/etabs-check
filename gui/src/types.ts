@@ -213,4 +213,13 @@ export interface FixPreview {
   changes: { what: string; before: unknown; after: unknown }[];
   warnings: string[];
   unlocks: boolean;
+  inputs?: { key: string; label: string; value: number; unit: string }[];
+  rows?: FixRows;
+}
+
+export interface FixRows {
+  key: string;
+  title: string;
+  columns: { key: string; label: string; edit?: "number" | "select"; options?: string[] }[];
+  items: Record<string, string | number | boolean>[];
 }
