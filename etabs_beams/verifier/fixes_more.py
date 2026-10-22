@@ -278,7 +278,7 @@ _SCOPES = {"floor_global": ("setările globale ale plăcilor", _FLOOR_G, None),
            "floor_areas": ("opțiunile de mesh ale plăcilor", _FLOOR_A, "UniqueName"),
            "wall_areas": ("opțiunile de mesh ale pereților", _WALL_A, "UniqueName")}
 _MESH_WANT = {"floor_global": {"MeshOpt": "Rectangular", "Localized": "Yes", "MergeJoints": "Yes"}, "wall_global": {},
-              "floor_areas": {"MeshOption": "Default", "Restraints": "Yes"}, "wall_areas": {"MeshOption": "Default", "Restraints": "Yes"}}
+              "floor_areas": {"MeshOption": "Default", "Restraints": "Yes"}, "wall_areas": {"MeshOption": "Auto Rectangular", "Restraints": "Yes"}}
 
 
 def _mesh_changes(sap, scope: str, size: float) -> dict:

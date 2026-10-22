@@ -273,8 +273,8 @@ class TableFixTests(unittest.TestCase):
         self.assertEqual((row["MeshOpt"], row["Localized"], row["MaxMeshSize"]), ("General", "No", "1"))
         fx, undo = roundtrip("apply_mesh_standard", Session(m), {"scope": "wall_areas"})
         walls = m.DatabaseTables.t["Area Assignments - Wall Auto Mesh Options"]["rows"]
-        self.assertEqual([w["MeshOption"] for w in walls], ["Default", "Default"])
-        self.assertEqual(list(undo["old"]), ["W1"])
+        self.assertEqual([w["MeshOption"] for w in walls], ["Auto Rectangular", "Auto Rectangular"])      # standardul peretilor: mesh rectangular automat
+        self.assertEqual(list(undo["old"]), ["W2"])
 
 
 class CheckOffersTests(unittest.TestCase):

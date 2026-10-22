@@ -87,11 +87,12 @@ def r5_mesh(ctx):
         if df.empty:
             continue
         mo, rs = col(df, "MeshOption"), col(df, "Restraints")
-        odd = df[(df[mo].astype(str).str.lower() != "default") | (~df[rs].map(yes) if rs else False)]
+        want = "auto rectangular" if scope == "wall_areas" else "default"       # pereti: mesh rectangular automat (altfel panoul ramane un singur element)
+        odd = df[(df[mo].astype(str).str.lower() != want) | (~df[rs].map(yes) if rs else False)]
         if len(odd):
             objs = [("area", sname(r["UniqueName"]), {"label": str(r["Label"]), "story": str(r["Story"]), "mesh": str(r[mo])})
                     for _, r in odd.iterrows()]
-            out.append(Finding(INFO, f"{len(odd)} arii ({what}) au opțiuni de mesh diferite de standard (opțiune „Default” și "
+            out.append(Finding(INFO, f"{len(odd)} arii ({what}) au opțiuni de mesh diferite de standard (opțiune „{'Auto Rectangular' if scope == 'wall_areas' else 'Default'}” și "
                                      f"„Add Restraints” activ; acum: {', '.join(sorted(set(odd[mo].astype(str))))}).", objs,
                                fix=fx(scope, f"Aplică standardul la {len(odd)} {what}")))
     return out

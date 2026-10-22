@@ -23,7 +23,7 @@ class FixOfferTests(unittest.TestCase):
                 "Area Assignments - Wall Auto Mesh Options": wa}, "r5_mesh")
         scopes = [f["fix"]["args"]["scope"] for f in r["findings"] if f.get("fix")]
         self.assertEqual(scopes, ["floor_global", "wall_areas"])
-        self.assertEqual(r["findings"][1]["count"], 2)
+        self.assertEqual(r["findings"][1]["count"], 1)                                   # doar W2 (Default / fara restrictii)
 
     def test_diaphragm_proposal_comes_from_same_story(self):
         asg = df([dict(UniqueName="1", Label="A", Story="E1", PropType="Slab", SectProp="S"),

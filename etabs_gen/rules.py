@@ -54,14 +54,14 @@ def apply_mesh(sap, mesh_max: float) -> str:
     size = f"{mesh_max:g}"
     update_rows(sap, "Analysis Options - Automatic Mesh Settings for Floors", {None: {"MeshOpt": "Rectangular", "Localized": "Yes", "MergeJoints": "Yes", "MaxMeshSize": size}}, None)
     update_rows(sap, "Analysis Options - Automatic Rectangular Mesh Options for Walls", {None: {"MaxMeshSize": size}}, None)
-    for key in ("Area Assignments - Floor Auto Mesh Options", "Area Assignments - Wall Auto Mesh Options"):
+    for key, option in (("Area Assignments - Floor Auto Mesh Options", "Default"), ("Area Assignments - Wall Auto Mesh Options", "Auto Rectangular")):
         try:
             _v, _f, rows = read_table(sap, key)
         except GenError:
             continue                                            # tabel inexistent (ex. fara pereti)
         if rows:
-            update_rows(sap, key, {r["UniqueName"]: {"MeshOption": "Default", "Restraints": "Yes"} for r in rows}, "UniqueName")
-    return f"mesh: plăci Rectangular/Localized/Merge, {size} m; arii „Default” + Add Restraints"
+            update_rows(sap, key, {r["UniqueName"]: {"MeshOption": option, "Restraints": "Yes"} for r in rows}, "UniqueName")
+    return f"mesh: plăci Rectangular/Localized/Merge, {size} m; plăci „Default”, pereți „Auto Rectangular” + Add Restraints"
 
 
 # ---------------------------------------------------------------- sursa de masa, moduri
