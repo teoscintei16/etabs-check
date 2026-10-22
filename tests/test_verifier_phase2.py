@@ -165,13 +165,15 @@ class StructureTests(unittest.TestCase):
 
     def test_diaphragms(self):
         t = {"Diaphragm Definitions": df([dict(Name="D1", Rigidity="Rigid")]),
-             "Area Section Property Definitions - Summary": df([dict(Name="P", Type="Slab", AnalType="Membrane")]),
+             "Area Section Property Definitions - Summary": df([dict(Name="PL15", Type="Slab", AnalType="Membrane"), dict(Name="Deck1", Type="Deck", AnalType="Membrane")]),
              "Area Assignments - Section Properties": df([dict(Story="S", Label="F1", UniqueName="1", SectProp="PL15", PropType="Slab"),
                                                            dict(Story="S", Label="F2", UniqueName="2", SectProp="Radier 1m", PropType="Slab")]),
              "Area Assignments - Diaphragms": df([dict(UniqueName="9", Diaphragm="D1")])}
         r = go(t, "r3_diafragme")
         self.assertEqual(r["status"], "error")                                           # placa fara diafragma = eroare
         self.assertEqual(len(r["findings"]), 3)
+        mem = [f for f in r["findings"] if "Membrane" in f["message"]][0]
+        self.assertEqual([o["name"] for o in mem["objects"]], ["PL15"])                 # Deck1 din sablon nu e asignat: nu conteaza
         miss = [f for f in r["findings"] if f["objects"] and f["objects"][0]["type"] == "area"][0]
         self.assertEqual([o["name"] for o in miss["objects"]], ["1"])                    # radierul e exceptat
 

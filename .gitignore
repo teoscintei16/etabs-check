@@ -6,3 +6,4 @@ __pycache__/
 *.raport.html
 CSI API ETABS/
 ETABS MANUAL/
+generated_models/

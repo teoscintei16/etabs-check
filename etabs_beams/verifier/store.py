@@ -13,6 +13,8 @@ FALLBACK_DIR = Path(__file__).resolve().parents[2] / "data"
 def sidecar_path(model_file: str) -> Path:
     """<model>.EDB.checks.json langa model; daca modelul nu are cale sau folderul nu e scriptibil -> data/."""
     if model_file:
+        if model_file.lower().endswith(".$et"):                    # fisier de lucru ETABS al unui model salvat: setarile merg langa .EDB
+            model_file = model_file[:-4] + ".EDB"
         p = Path(model_file + ".checks.json")
         if os.access(p.parent, os.W_OK):
             return p

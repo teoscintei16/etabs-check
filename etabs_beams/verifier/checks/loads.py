@@ -59,7 +59,8 @@ def r6_sursa_masa(ctx):
     for name, grp in ms.groupby("Name", sort=False):
         head = grp.iloc[0]
         obj = [("masssource", str(name))]
-        pats = [(str(p), float(m)) for p, m in zip(grp["LoadPattern"], grp["Multiplier"]) if str(p).strip() and m == m and str(m) != ""]
+        pats = ([(str(p), float(m)) for p, m in zip(grp["LoadPattern"], grp["Multiplier"]) if str(p).strip() and m == m and str(m) != ""]
+                if {"LoadPattern", "Multiplier"} <= set(grp.columns) else [])          # masa doar din elemente: tabelul nu are aceste coloane
         lateral, self_mass = yes(head["IncLateral"]), yes(head["SourceSelf"])
         use_loads = yes(head["SourceLoads"])
         if not lateral:

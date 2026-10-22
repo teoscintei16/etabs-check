@@ -125,7 +125,10 @@ def r3_diafragme(ctx):
                                [("diaphragm", n) for n in rigid]))
     sec = t("Area Section Property Definitions - Summary")
     if not sec.empty:
+        used_props = set(t("Area Assignments - Section Properties")["SectProp"].astype(str)) if not t("Area Assignments - Section Properties").empty else None
         mem = sec[(sec["Type"].astype(str) == "Slab") & (sec["AnalType"].astype(str).str.lower() == "membrane")]
+        if used_props is not None:                       # sectiunile din sablon, neasignate nicaieri, nu conteaza
+            mem = mem[mem["Name"].astype(str).isin(used_props)]
         if len(mem):
             out.append(Finding(WARNING, "Plăci modelate ca „Membrane”: nu preiau încovoiere (valabil doar pentru plăci rezemate pe grinzi, nu pentru dale).",
                                [("section", str(n)) for n in mem["Name"]]))
