@@ -24,8 +24,16 @@ def apply_cracking(sap, spec, names: dict[str, str]) -> str:
         ok(sap.PropFrame.SetModifiers(names[key], [1.0, 1.0, 1.0, j_f, i_f, i_f, 1.0, 1.0]), "PropFrame.SetModifiers")
     s = spec.crack_slab
     ok(sap.PropArea.SetModifiers(names["slab"], [1.0, 1.0, 1.0, s, s, s, 1.0, 1.0, 1.0, 1.0]), "PropArea.SetModifiers")
+    extra = ""
+    if "wall" in names:
+        f, m = spec.crack_wall_f, spec.crack_wall_m
+        ok(sap.PropArea.SetModifiers(names["wall"], [f, f, f, m, m, m, 1.0, 1.0, 1.0, 1.0]), "PropArea.SetModifiers (perete)")
+        extra = f", pereți f×{f:g}/m×{m:g}"
+    if "belt" in names:              # centura dummy: fara masa si greutate (peretele le are deja)
+        ok(sap.PropFrame.SetModifiers(names["belt"], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0]), "PropFrame.SetModifiers (centură)")
+        extra += ", centuri dummy fără masă"
     return (f"fisurare: stâlpi I×{spec.crack_col_I:g}/J×{spec.crack_col_J:g}, grinzi I×{spec.crack_beam_I:g}/J×{spec.crack_beam_J:g}, "
-            f"plăci m×{spec.crack_slab:g}")
+            f"plăci m×{spec.crack_slab:g}" + extra)
 
 
 def apply_rigid_zones(sap, frames: list[str], factor: float) -> str:
@@ -33,6 +41,12 @@ def apply_rigid_zones(sap, frames: list[str], factor: float) -> str:
     AutoOffset=True, deci se scrie tabelul „End Length Offsets” (intreg, intr-o singura aplicare)."""
     n = update_rows(sap, "Frame Assignments - End Length Offsets", {f: {"RigidFact": f"{factor:g}"} for f in frames}, "UniqueName")
     return f"zone rigide ×{factor:g} la {n} bare"
+
+
+def apply_beam_insertion(sap, beams: list[str]) -> str:
+    """Grinzile si centurile se insereaza cu punctul cardinal 8 (sus, centru): fata superioara la nivelul placii."""
+    n = update_rows(sap, "Frame Assignments - Insertion Point", {b: {"CardinalPt": "8 (Top Center)"} for b in beams}, "UniqueName")
+    return f"grinzi/centuri cu punct de inserție sus-centru ({n})"
 
 
 # ---------------------------------------------------------------- mesh

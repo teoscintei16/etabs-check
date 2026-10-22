@@ -15,12 +15,21 @@ class Snapshot:
         self.model_file = session.filename
         self.analyzed = session.analyzed
         self.original_units = session.model.GetPresentUnits()     # unitatile modelului (le restauram dupa citire)
+        self.analysis_model_created = self._ensure_analysis_model()
         self._tables: dict[str, pd.DataFrame] = {}
         self.unavailable: set[str] = set()
         self._model: ModelData | None = None
         self._extras = None
         self._legacy: dict | None = None
         self.cache: dict = {}
+
+    def _ensure_analysis_model(self) -> bool:
+        """Tabelele „Objects and Elements - ...” exista doar daca modelul de analiza e creat (nu cere rularea analizei si nu blocheaza modelul).
+        Fara el, un model nerulat ar arata gol verificarilor de geometrie/pereti/noduri."""
+        try:
+            return self.session.model.Analyze.CreateAnalysisModel() == 0
+        except Exception:
+            return False
 
     # ---- tabele
     def table(self, key: str) -> pd.DataFrame:

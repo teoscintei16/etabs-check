@@ -5,12 +5,14 @@ import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from .layout import blocked, wall_runs
 from .connect import KN_M_C, GenError, assert_safe_to_overwrite, ok
-from .rules import (apply_combinations, apply_cracking, apply_mass_source, apply_mesh, apply_modal, apply_rigid_zones, apply_seismic,
+from .rules import (apply_combinations, apply_cracking, apply_beam_insertion, apply_mass_source, apply_mesh, apply_modal, apply_rigid_zones, apply_seismic,
                     assert_finite)
 
 # clasa betonului -> (fck [kN/m2], Ecm [kN/m2]) conform EN 1992-1-1
 CONCRETE = {"C20/25": (20e3, 30e6), "C25/30": (25e3, 31e6), "C30/37": (30e3, 33e6), "C35/45": (35e3, 34e6), "C40/50": (40e3, 35e6)}
+BELT_H = 0.25                               # m, inaltimea centurii dummy
 SLAB_DIR_GRAVITY = 10                       # directia de incarcare „Gravity” din API
 STEEL, CONCRETE_TYPE, SLAB, SHELL_THIN, SUPER_DEAD = 1, 2, 0, 1, 2
 
@@ -59,6 +61,17 @@ class FrameSpec:
     gamma_g: float = 1.35
     gamma_q: float = 1.5
     seismic: bool = True                    # False = fara actiune seismica (doar gravitational)
+    # --- pereti structurali (izolati): panouri pe grila, un panou pe deschidere si pe etaj
+    walls: bool = False
+    wall_t: float = 0.25                    # m, grosimea peretilor
+    wall_lines_x: str = "first,last"        # liniile de grila (pe Y) pe care sunt pereti paraleli cu X
+    wall_bays_x: str = "middle"             # deschiderile ocupate de acesti pereti
+    wall_lines_y: str = "first,last"
+    wall_bays_y: str = "middle"
+    gravity_frame: bool = True              # stalpi si grinzi in afara peretilor
+    belts: bool = True                      # centuri (grinzi „dummy”) deasupra peretilor, la fiecare etaj
+    crack_wall_f: float = 0.5               # fisurare pereti: f11, f22, f12 (in plan)
+    crack_wall_m: float = 0.25              # m11, m22, m12 (incovoiere din plan)
 
     def validate(self) -> "FrameSpec":
         if not (1 <= self.stories <= 60):
@@ -75,6 +88,13 @@ class FrameSpec:
         for f in ("crack_col_I", "crack_col_J", "crack_beam_I", "crack_beam_J", "crack_slab", "rigid_zone"):
             if not 0 < getattr(self, f) <= 1:
                 raise GenError(f"„{f}” trebuie să fie între 0 (exclusiv) și 1.")
+        if self.walls:
+            if self.wall_t <= 0:
+                raise GenError("Grosimea peretelui trebuie să fie pozitivă.")
+            for f in ("crack_wall_f", "crack_wall_m"):
+                if not 0 < getattr(self, f) <= 1:
+                    raise GenError(f"„{f}” trebuie să fie între 0 (exclusiv) și 1.")
+            wall_runs(self)                  # valideaza textul liniilor si deschiderilor
         if self.mesh_max <= 0 or self.modes_per_story < 1:
             raise GenError("Dimensiunea mesh-ului și numărul de moduri pe etaj trebuie să fie pozitive.")
         if self.seismic:
@@ -92,7 +112,8 @@ def _cm(v: float) -> str:
 
 def section_names(spec: FrameSpec) -> dict[str, str]:
     return {"column": f"C{_cm(spec.column_b)}x{_cm(spec.column_h)}", "beam": f"B{_cm(spec.beam_b)}x{_cm(spec.beam_h)}",
-            "slab": f"P{_cm(spec.slab_t)}", "material": spec.concrete}
+            "slab": f"P{_cm(spec.slab_t)}", "material": spec.concrete,
+            **({"wall": f"W{_cm(spec.wall_t)}", **({"belt": "CENTURA"} if spec.belts else {})} if spec.walls else {})}
 
 
 def define_sections(sap, spec: FrameSpec) -> dict[str, str]:
@@ -109,6 +130,10 @@ def define_sections(sap, spec: FrameSpec) -> dict[str, str]:
     ok(sap.PropFrame.SetRectangle(n["column"], n["material"], spec.column_h, spec.column_b), "SetRectangle (stâlp)")
     ok(sap.PropFrame.SetRectangle(n["beam"], n["material"], spec.beam_h, spec.beam_b), "SetRectangle (grindă)")
     ok(sap.PropArea.SetSlab(n["slab"], SLAB, SHELL_THIN, n["material"], spec.slab_t), "SetSlab")
+    if spec.walls:
+        ok(sap.PropArea.SetWall(n["wall"], 0, SHELL_THIN, n["material"], spec.wall_t), "SetWall")
+        if spec.belts:                       # centura: grinda „dummy” cat grosimea peretelui, fara masa/greutate proprie (nu dubleaza peretele)
+            ok(sap.PropFrame.SetRectangle(n["belt"], n["material"], BELT_H, spec.wall_t), "SetRectangle (centură)")
     return n
 
 
@@ -126,24 +151,55 @@ def build_frame_model(sap, spec: FrameSpec, out_path: str | Path | None = None) 
     zs = [0.0] + [spec.bottom + k * spec.story_height for k in range(spec.stories)]
     count = {"stalpi": 0, "grinzi": 0, "placi": 0}
     base_points: list[str] = []
-    frames: list[str] = []
+    frames: list[str] = []                         # bare cu zone rigide (fara centuri)
+    beams: list[str] = []                          # grinzi + centuri (insertie sus-centru)
+    runs = wall_runs(spec) if spec.walls else []
+    skip_nodes, skip_xb, skip_yb = blocked(runs)
+    if spec.walls:
+        count.update({"pereti": 0, "centuri": 0})
+        for pier in dict.fromkeys(r["pier"] for r in runs):
+            sap.PierLabel.SetPier(pier)            # eroare daca exista deja: se ignora
+    frame_on = spec.gravity_frame
 
     for k in range(1, len(zs)):
-        for x in xs:
-            for y in ys:
-                name = ok(sap.FrameObj.AddByCoord(x, y, zs[k - 1], x, y, zs[k], "", sec["column"]), "AddByCoord (stâlp)")[0]
-                frames.append(name)
-                count["stalpi"] += 1
+        if frame_on:
+            for ix, x in enumerate(xs):
+                for iy, y in enumerate(ys):
+                    if (ix, iy) in skip_nodes:
+                        continue                   # nodul e capatul unui perete: fara stalp
+                    name = ok(sap.FrameObj.AddByCoord(x, y, zs[k - 1], x, y, zs[k], "", sec["column"]), "AddByCoord (stâlp)")[0]
+                    frames.append(name)
+                    count["stalpi"] += 1
+                    if k == 1:
+                        base_points.append(ok(sap.FrameObj.GetPoints(name), "GetPoints")[0])
+            for iy, y in enumerate(ys):
+                for i, (a, b) in enumerate(zip(xs, xs[1:])):
+                    if (iy, i) not in skip_xb:
+                        frames.append(ok(sap.FrameObj.AddByCoord(a, y, zs[k], b, y, zs[k], "", sec["beam"]), "AddByCoord (grindă X)")[0])
+                        beams.append(frames[-1])
+                        count["grinzi"] += 1
+            for ix, x in enumerate(xs):
+                for j, (a, b) in enumerate(zip(ys, ys[1:])):
+                    if (ix, j) not in skip_yb:
+                        frames.append(ok(sap.FrameObj.AddByCoord(x, a, zs[k], x, b, zs[k], "", sec["beam"]), "AddByCoord (grindă Y)")[0])
+                        beams.append(frames[-1])
+                        count["grinzi"] += 1
+        for r in runs:
+            for i in r["bays"]:
+                if r["axis"] == "X":
+                    y = ys[r["line"]]
+                    px, py = [xs[i], xs[i + 1], xs[i + 1], xs[i]], [y] * 4
+                else:
+                    x = xs[r["line"]]
+                    px, py = [x] * 4, [ys[i], ys[i + 1], ys[i + 1], ys[i]]
+                name = ok(sap.AreaObj.AddByCoord(4, px, py, [zs[k - 1], zs[k - 1], zs[k], zs[k]], "", sec["wall"]), "AddByCoord (perete)")[-1]
+                ok(sap.AreaObj.SetPier(name, r["pier"]), "AreaObj.SetPier")
+                count["pereti"] += 1
                 if k == 1:
-                    base_points.append(ok(sap.FrameObj.GetPoints(name), "GetPoints")[0])
-        for y in ys:
-            for a, b in zip(xs, xs[1:]):
-                frames.append(ok(sap.FrameObj.AddByCoord(a, y, zs[k], b, y, zs[k], "", sec["beam"]), "AddByCoord (grindă X)")[0])
-                count["grinzi"] += 1
-        for x in xs:
-            for a, b in zip(ys, ys[1:]):
-                frames.append(ok(sap.FrameObj.AddByCoord(x, a, zs[k], x, b, zs[k], "", sec["beam"]), "AddByCoord (grindă Y)")[0])
-                count["grinzi"] += 1
+                    base_points += list(ok(sap.AreaObj.GetPoints(name), "AreaObj.GetPoints")[1][:2])
+                if spec.belts:
+                    beams.append(ok(sap.FrameObj.AddByCoord(px[0], py[0], zs[k], px[1], py[1], zs[k], "", sec["belt"]), "AddByCoord (centură)")[0])
+                    count["centuri"] += 1
 
     sap.Diaphragm.Delete("D1")                # NewGridOnly defineste deja o diafragma D1 (rigida): o redefinim cu tipul cerut
     ok(sap.Diaphragm.SetDiaphragm("D1", spec.diaphragm == "semirigid"), "SetDiaphragm")
@@ -162,10 +218,10 @@ def build_frame_model(sap, spec: FrameSpec, out_path: str | Path | None = None) 
                     ok(sap.AreaObj.SetLoadUniform(name, "Live", spec.live, SLAB_DIR_GRAVITY), "SetLoadUniform (utilă)")
                 count["placi"] += 1
 
-    for p in base_points:
+    for p in dict.fromkeys(base_points):
         ok(sap.PointObj.SetRestraint(p, [True] * 6), "SetRestraint")
 
-    notes = [apply_cracking(sap, spec, sec), apply_rigid_zones(sap, frames, spec.rigid_zone), apply_mesh(sap, spec.mesh_max),
+    notes = [apply_cracking(sap, spec, sec), apply_rigid_zones(sap, frames, spec.rigid_zone), apply_beam_insertion(sap, beams), apply_mesh(sap, spec.mesh_max),
              apply_mass_source(sap, spec, bool(spec.dead_extra)), apply_modal(sap, spec)]
     static, cases = [], []
     if spec.seismic:
@@ -181,16 +237,19 @@ def build_frame_model(sap, spec: FrameSpec, out_path: str | Path | None = None) 
         path = Path(out_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         ok(sap.File.Save(str(path)), "File.Save")
-    return {"spec": asdict(spec), "sections": sec, "objects": count, "base_nodes": len(base_points), "file": str(path) if path else None,
-            "notes": notes, "project": project_params(spec) if spec.seismic else {}}
+    return {"spec": asdict(spec), "sections": sec, "objects": count, "base_nodes": len(set(base_points)), "file": str(path) if path else None,
+            "notes": notes, "project": project_params(spec) if spec.seismic else {},
+            "belts": {"has": True, "sections": [sec["belt"]]} if spec.walls and spec.belts else None,
+            "piers": sorted({r["pier"] for r in runs})}
 
 
 def project_params(spec: FrameSpec) -> dict:
     """Parametrii proiectului pentru Setarile verificatorului (aceleasi valori ca in model)."""
     return {"ag": spec.ag, "gamma_I": spec.gamma_I, "beta0": spec.beta0, "Tb": spec.Tb, "Tc": spec.Tc, "Td": spec.Td, "q": spec.q,
-            "lambda_mfse": spec.lam, "ecc": spec.ecc, "basement": "nu", "tip_cladire": "rezidential_cadre"}
+            "lambda_mfse": spec.lam, "ecc": spec.ecc, "basement": "nu", "tip_cladire": "rezidential_pereti" if spec.walls else "rezidential_cadre"}
 
 
 def default_path(spec: FrameSpec, out_dir: Path) -> Path:
     safe = re.sub(r"[^\w\-]+", "_", spec.name).strip("_") or "model"
-    return out_dir / f"{safe}_{spec.stories}et_{spec.bays}x{spec.travei}.EDB"
+    kind = "pereti_" if spec.walls else ""
+    return out_dir / f"{safe}_{kind}{spec.stories}et_{spec.bays}x{spec.travei}.EDB"

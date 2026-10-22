@@ -39,7 +39,7 @@ def _alive() -> bool:
         return False
 
 
-def _write_verifier_settings(model_file: str | None, project: dict) -> str | None:
+def _write_verifier_settings(model_file: str | None, project: dict, belts: dict | None = None) -> str | None:
     """Parametrii proiectului merg in setarile verificatorului (<model>.EDB.checks.json), ca sa nu fie reintroductii de mana."""
     if not model_file or not project:
         return None
@@ -49,6 +49,8 @@ def _write_verifier_settings(model_file: str | None, project: dict) -> str | Non
         return None
     store = Sidecar(model_file)
     store.set_project(project)
+    if belts:                                  # centurile dummy declarate: verificatorul nu mai intreaba si le ignora la bare
+        store.set_belts(belts["has"], belts["sections"])
     return str(store.path)
 
 
@@ -105,7 +107,7 @@ def build_frames(req: BuildRequest):
         t0 = time.time()
         res = build_frame_model(_S["obj"].SapModel, spec, default_path(spec, OUT_DIR))
         res["seconds"] = round(time.time() - t0, 1)
-        res["sidecar"] = _write_verifier_settings(res["file"], res["project"])
+        res["sidecar"] = _write_verifier_settings(res["file"], res["project"], res.get("belts"))
         _S["models"].append({"file": res["file"], "objects": res["objects"], "name": spec.name})
         return res
     return run(_f)

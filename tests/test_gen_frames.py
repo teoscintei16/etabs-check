@@ -22,6 +22,8 @@ class Rec:
                 self._s.setdefault("frames", []).append(f"O{self._s['n']}")
                 return [f"O{self._s['n']}", 0]
             if name == "GetPoints":
+                if self._p.startswith("AreaObj"):
+                    return [4, tuple(f"{a[0]}{c}" for c in "abcd"), 0]
                 return [f"P{a[0]}a", f"P{a[0]}b", 0]
             return 0
         return call
@@ -39,6 +41,7 @@ class FakeTables:
             "Area Assignments - Floor Auto Mesh Options": (["UniqueName", "MeshOption", "Restraints"],
                                                            [dict(UniqueName="1", MeshOption="Default", Restraints="No")]),
             "Frame Assignments - End Length Offsets": (["UniqueName", "OffsetOpt", "OffsetI", "OffsetJ", "RigidFact", "SelfWtOpt"], []),
+            "Frame Assignments - Insertion Point": (["UniqueName", "CardinalPt"], []),
             "Mass Source Definition": (["Name", "IsDefault", "IncLateral", "IncVertical", "LumpMass", "SourceSelf", "SourceAdded", "SourceLoads",
                                         "MoveMass", "LoadPattern", "Multiplier"], [dict(Name="MsSrc1", SourceLoads="No")]),
             "Functions - Response Spectrum - User Defined": (["Name", "Period", "Value", "DampRatio"], [dict(Name="UnifRS", Period="0", Value="1", DampRatio="0.05")]),
@@ -47,13 +50,18 @@ class FakeTables:
         }
         self.pending = []
 
-    def seed_frames(self, names):
-        """Dupa fiecare AddByCoord ETABS adauga o linie in tabelul de decalaje (OffsetOpt Auto, RigidFact 0)."""
-        self.t["Frame Assignments - End Length Offsets"][1][:] = [dict(UniqueName=n, OffsetOpt="Auto", OffsetI="0.25", OffsetJ="0.25", RigidFact="0", SelfWtOpt="Auto") for n in names]
+    def seed_frames(self, names, key):
+        """Dupa fiecare AddByCoord ETABS adauga cate o linie in tabelele pe bare (decalaje, punct de insertie), o singura data."""
+        if self.t[key][1]:
+            return
+        if key == "Frame Assignments - End Length Offsets":
+            self.t[key][1][:] = [dict(UniqueName=n, OffsetOpt="Auto", OffsetI="0.25", OffsetJ="0.25", RigidFact="0", SelfWtOpt="Auto") for n in names]
+        else:
+            self.t[key][1][:] = [dict(UniqueName=n, CardinalPt="10 (Centroid)") for n in names]
 
     def GetTableForEditingArray(self, key, g, v, f, n, d):
-        if key == "Frame Assignments - End Length Offsets":
-            self.seed_frames(self.frames_ref())
+        if key in ("Frame Assignments - End Length Offsets", "Frame Assignments - Insertion Point"):
+            self.seed_frames(self.frames_ref(), key)
         if key not in self.t:
             return [0, (), 0, (), 1]
         fields, rows = self.t[key]
@@ -77,7 +85,7 @@ class FakeSap:
     def __init__(self, filename=""):
         self.s = {"calls": [], "n": 0}
         self.filename = filename
-        for n in ("File", "PropMaterial", "PropFrame", "PropArea", "FrameObj", "AreaObj", "PointObj", "Diaphragm", "View", "RespCombo"):
+        for n in ("File", "PropMaterial", "PropFrame", "PropArea", "FrameObj", "AreaObj", "PointObj", "Diaphragm", "View", "RespCombo", "PierLabel"):
             setattr(self, n, Rec(self.s, n + "."))
         self.LoadPatterns = Rec(self.s, "LoadPatterns.")
         self.LoadCases = type("LC", (), {"ModalEigen": Rec(self.s, "ModalEigen."), "ResponseSpectrum": Rec(self.s, "RS.")})()
