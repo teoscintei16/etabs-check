@@ -110,13 +110,9 @@ class Tables:
         return [v, 0]
 
     def ApplyEditedTables(self, log, a, b, c, d, e):
+        """Ca in ETABS: tabelul intreg se inlocuieste cu randurile trimise (cele netrimise se sterg)."""
         key, fields, n, data = self.pending
-        kf = self.t[key].get("key")
-        rows = self.t[key]["rows"]
-        for i in range(n):
-            vals = dict(zip(fields, data[i * len(fields):(i + 1) * len(fields)]))
-            row = next(r for r in rows if kf is None or str(r[kf]) == vals[kf])
-            row.update({f: v for f, v in vals.items() if f != kf})
+        self.t[key]["rows"][:] = [dict(zip(fields, data[i * len(fields):(i + 1) * len(fields)])) for i in range(n)]
         return [0, 0, 0, 0, "", 0]
 
     def CancelTableEditing(self):
@@ -248,7 +244,9 @@ class TableFixTests(unittest.TestCase):
         fx, undo = roundtrip("set_rigid_factor", Session(m), {"frames": ["1"], "factor": 0.75})
         rows = m.DatabaseTables.t["Frame Assignments - End Length Offsets"]["rows"]
         self.assertEqual([r["RigidFact"] for r in rows], ["0.75", "0"])
+        self.assertEqual(len(rows), 2)                                               # nicio inregistrare stearsa
         fx.undo(Session(m), undo)
+        rows = m.DatabaseTables.t["Frame Assignments - End Length Offsets"]["rows"]
         self.assertEqual([r["RigidFact"] for r in rows], ["0", "0"])
         with self.assertRaises(EtabsError):
             FIXES["set_rigid_factor"].apply(Session(m), {"frames": ["1"], "factor": 2})
@@ -262,6 +260,7 @@ class TableFixTests(unittest.TestCase):
         pt = m.DatabaseTables.t["Point Object Connectivity"]["rows"][0]
         self.assertEqual((pt["X"], pt["Y"], pt["Z"]), ("0", "3.0005", "4"))
         fx.undo(Session(m), undo)
+        pt = m.DatabaseTables.t["Point Object Connectivity"]["rows"][0]
         self.assertEqual((pt["X"], pt["Y"]), ("0.00003", "3.00004"))
 
     def test_mesh_standard_changes_only_differences(self):
@@ -270,6 +269,7 @@ class TableFixTests(unittest.TestCase):
         row = m.DatabaseTables.t["Analysis Options - Automatic Mesh Settings for Floors"]["rows"][0]
         self.assertEqual((row["MeshOpt"], row["Localized"], row["MergeJoints"], row["MaxMeshSize"]), ("Rectangular", "Yes", "Yes", "0.5"))
         fx.undo(Session(m), undo)
+        row = m.DatabaseTables.t["Analysis Options - Automatic Mesh Settings for Floors"]["rows"][0]
         self.assertEqual((row["MeshOpt"], row["Localized"], row["MaxMeshSize"]), ("General", "No", "1"))
         fx, undo = roundtrip("apply_mesh_standard", Session(m), {"scope": "wall_areas"})
         walls = m.DatabaseTables.t["Area Assignments - Wall Auto Mesh Options"]["rows"]
