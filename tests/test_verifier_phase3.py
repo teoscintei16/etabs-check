@@ -65,6 +65,14 @@ class AreaGeometryTests(unittest.TestCase):
         r = go(m.tables(), "r14_normale_placi")
         self.assertEqual((r["status"], r["findings"][0]["objects"][0]["name"]), ("warning", "9"))
 
+    def test_concave_quad_with_a_reflex_corner_is_not_a_reversed_slab(self):
+        m = Mesh()
+        for i in range(3):
+            m.rect(str(i), "Floor", "S1", i * 2, 0, 1, 1)
+        js = [m.jt(*p, "S1") for p in [(10.0, 0.0, 3.0), (12.0, 1.0, 3.0), (14.0, 0.0, 3.0), (14.0, 4.0, 3.0)]]   # CCW, colt 2 reflex: triunghiul 1-2-3 e orientat invers
+        m.areas.append(dict(Story="S1", ElmName="c-1", ObjType="Floor", ObjLabel="Lc", ObjName="c", ElmJt1=js[0], ElmJt2=js[1], ElmJt3=js[2], ElmJt4=js[3]))
+        self.assertEqual(go(m.tables(), "r14_normale_placi")["status"], "ok")
+
     def test_holes(self):
         m = Mesh()
         m.rect("a", "Floor", "S1", 0, 0, 10, 4)           # banda de jos

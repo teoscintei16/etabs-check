@@ -27,17 +27,26 @@ def _wall_edges(w):
     return (low[0], low[-1]), zmin, (high[0], high[-1]), zmax
 
 
+class _SlopedRef:
+    """Perete inclinat in lista de verificat: aceleasi campuri ca WallInfo (nume, eticheta, etaj)."""
+
+    def __init__(self, name: str, e: dict):
+        self.name, self.label, self.story = name, e["label"], e["story"]
+
+
 @check("r2_continuitate_verticala", 2, "Continuitatea verticală a stâlpilor și pereților până la bază",
        params=[Param("continuitate_tol", 0.05, "Toleranța de poziție la verificarea reazemului", "m")])
 def r2_continuitate_verticala(ctx):
     """Un stalp sau perete care nu e la baza trebuie sa aiba dedesubt un stalp sau perete (nu o placa sau o grinda): altfel reazema pe element orizontal."""
     model, tol = ctx.snap.model, ctx.p("continuitate_tol")
     cols = [f for f in model.frames.values() if f.orientation == COLUMN and abs(f.end[2] - f.start[2]) > 1e-6]
-    walls = [(w, e) for w in model.walls.values() if (e := _wall_edges(w))]
+    walls = [(w, e) for w in model.walls.values() if not w.virtual and (e := _wall_edges(w))]
+    for name, e in model.sloped_walls.items():                           # pereti inclinati: marginile reale (jos, sus), nu un dreptunghi vertical
+        walls.append((_SlopedRef(name, e), ((e["bottom"][0], e["bottom"][1]), e["bottom"][2], (e["top"][0], e["top"][1]), e["top"][2])))
     if not cols and not walls:
         return []
     base = min([min(f.start[2], f.end[2]) for f in cols] + [e[1] for _w, e in walls])
-    below_walls = [(e[0], e[3]) for _w, e in walls]                           # (segment de sus, cota de sus) al peretilor
+    below_walls = [(e[2], e[3]) for _w, e in walls]                           # (segment de sus, cota de sus) al peretilor
     below_cols = [(max(f.start[2], f.end[2]), f.start[0], f.start[1]) if f.start[2] > f.end[2] else (f.end[2], f.end[0], f.end[1]) for f in cols]
 
     def supported_point(x, y, z):

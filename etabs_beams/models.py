@@ -57,6 +57,7 @@ class WallInfo:
     zmax: float = 0.0
     label: str = ""
     story: str = ""
+    virtual: bool = False          # margine (sus/jos) a unui perete inclinat, reprezentata ca perete vertical subtire pentru logica grinda-pe-perete
 
 
 @dataclass
@@ -67,6 +68,7 @@ class ModelData:
     node_frames: dict[str, list[str]] = field(default_factory=dict)
     node_areas: dict[str, list[str]] = field(default_factory=dict)
     walls: dict[str, WallInfo] = field(default_factory=dict)     # doar arii de tip perete
+    sloped_walls: dict[str, dict] = field(default_factory=dict)  # arii cu proprietate de perete dar neverticale (rampe): marginile reale de jos si de sus
     units: str = "kN_m"
     beam_names: list[str] = field(default_factory=list)          # rezultat clasificare
     belt_names: list[str] = field(default_factory=list)          # bare "centura" (dummy), separate de grinzi

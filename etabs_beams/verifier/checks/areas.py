@@ -70,9 +70,11 @@ def r14_normale_placi(ctx):
     f = e[e["ObjType"].astype(str) == "Floor"].drop_duplicates("ObjName")
     if f.empty:
         return []
-    ax = np.stack([f["X2"] - f["X1"], f["Y2"] - f["Y1"]], axis=1)
-    bx = np.stack([f["X3"] - f["X1"], f["Y3"] - f["Y1"]], axis=1)
-    nz = ax[:, 0] * bx[:, 1] - ax[:, 1] * bx[:, 0]
+    xs = np.stack([f[f"X{k}"].to_numpy(dtype=float) for k in range(1, 5)], axis=1)
+    ys = np.stack([f[f"Y{k}"].to_numpy(dtype=float) for k in range(1, 5)], axis=1)
+    tri = np.isnan(xs[:, 3])
+    xs[tri, 3], ys[tri, 3] = xs[tri, 2], ys[tri, 2]                      # triunghi: al patrulea nod repetat
+    nz = (xs * np.roll(ys, -1, axis=1) - np.roll(xs, -1, axis=1) * ys).sum(axis=1)       # aria orientata (formula lui Gauss): robusta si la patrulatere concave
     up = nz > 0
     minority = up.sum() < len(f) / 2
     bad = f[(up if minority else ~up) & (np.abs(nz) > 1e-9)]
@@ -121,6 +123,10 @@ def _wall_table(ctx) -> pd.DataFrame:
         return sp
     w = sp[sp["PropType"].astype(str) == "Wall"].copy()
     w["_n"] = [sname(x) for x in w["UniqueName"]]
+    model = ctx.snap.loaded_model() or ctx.snap.model
+    sloped = set(getattr(model, "sloped_walls", {}) or {})
+    if sloped:                                                  # aria cu proprietate Wall dar inclinata nu e perete vertical: nu poate avea eticheta Pier
+        w = w[~w["_n"].isin(sloped)]
     pl = ctx.snap.table("Area Assignments - Pier Labels")
     lab = {sname(r["UniqueName"]): str(r["PierName"]) for _, r in pl.iterrows()} if not pl.empty else {}
     w["_pier"] = w["_n"].map(lambda n: lab.get(n, ""))

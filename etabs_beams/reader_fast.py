@@ -59,6 +59,7 @@ def read_model_fast(session, table, cache: dict, tol: Tolerances | None = None) 
         md.sections[s] = _section_info(sap, s)
 
     md.walls = build_walls(table, cache)
+    md.sloped_walls = cache.get("sloped_walls", {})
     by_point: dict[str, list[str]] = {}
     for w in md.walls.values():
         for p in w.point_names:

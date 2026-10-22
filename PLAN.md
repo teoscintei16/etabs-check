@@ -351,3 +351,9 @@ Verificare nouă `r2_continuitate_verticala` (`checks/continuity.py`): fiecare s
 
 ## 36. Separarea în trei proiecte
 Extragerea grinzilor (detecție lanțuri/centuri, selector, export JSON, CLI `detect`, pagina proprie) a trecut în `etabs-beam-extract` (github.com/teoscintei16/etabs-beam-extract): citire rapidă din tabele, 31 de teste, pornire cu `python -m etabs_beam_extract serve`. Din verificator au ieșit `selector.py`, `export.py`, `continuity.py`, endpoint-ul `/api/detect`, comanda `detect` și tabul vechi de grinzi din GUI. Cele trei proiecte (verificator, creator, extractor) au repo, teste și pornire proprii; codul de bază comun (modele de date, citirea tabelelor) e copiat în fiecare. Teste verificator: 137.
+
+## 37. Planuri libere în creator; pereți înclinați în verificator
+`etabs-creator` generează acum planuri libere (cerc, elipsă, semicerc, poligon, trapez, lobi, spline), piramide (netede sau în trepte), răsucire, înclinare, atriu, pereți trapezoidali și subsol sub ele. Au ieșit la iveală, și s-au corectat în verificator:
+- **Pereți înclinați:** o arie cu proprietate Wall care nu e verticală e o „rampă” pentru ETABS (nu primește etichetă Pier). `build_walls` o păstrează în `ModelData.sloped_walls` (marginile reale de jos și de sus) și o reprezintă în logica grindă-pe-perete prin două benzi verticale subțiri (`WallInfo.virtual`) pe margini; `r4_pier_etichete` o ignoră; `r2_continuitate_verticala` folosește marginile reale (reazemul se caută pe marginea de sus a peretelui de dedesubt).
+- **`r14_normale_placi`:** sensul plăcii se ia din aria orientată (formula lui Gauss), nu din colțul 1: la patrulatere concave dădea fals „placă inversată”.
+Teste: 141.

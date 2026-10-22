@@ -1,6 +1,8 @@
 """Elemente de arie (mesh) si pereti din tabelele ETABS, vectorizat (fara apeluri COM pe obiect)."""
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pandas as pd
 
@@ -38,6 +40,8 @@ def build_walls(table, cache: dict) -> dict[str, WallInfo]:
     sp, sec = table("Area Assignments - Section Properties"), table("Area Section Property Definitions - Summary")
     e = build_area_elements(table, cache)
     walls: dict[str, WallInfo] = {}
+    sloped: dict[str, dict] = {}
+    cache["sloped_walls"] = sloped
     if sp.empty or e.empty:
         cache["walls"] = walls
         return walls
@@ -64,6 +68,10 @@ def build_walls(table, cache: dict) -> dict[str, WallInfo]:
         d = vt[0]
         if s[0] < 1e-9:
             continue
+        if s[1] > 1e-3 * s[0] + 1e-6:                        # proiectia in plan nu e un segment: aria nu e verticala (rampa / perete inclinat)
+            sloped[name] = _sloped_edges(x, y, z, meta[name], thick, js[rows])
+            walls.update(_virtual_edges(name, sloped[name], thick.get(str(meta[name]["SectProp"]), 0.0)))
+            continue
         t = pts @ d
         tmin, tmax = float(t.min()), float(t.max())
         zmin, zmax = float(z.min()), float(z.max())
@@ -77,3 +85,37 @@ def build_walls(table, cache: dict) -> dict[str, WallInfo]:
                                str(r["Label"]), str(r["Story"]))
     cache["walls"] = walls
     return walls
+
+
+EDGE_BAND = 0.2            # m: grosimea benzii verticale care reprezinta o margine de perete inclinat
+
+
+def _extreme_pair(pts: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Capetele celui mai lung segment din plan dintre punctele date (la o cota)."""
+    i = int(np.argmax(np.linalg.norm(pts - pts[0], axis=1)))
+    j = int(np.argmax(np.linalg.norm(pts - pts[i], axis=1)))
+    return pts[i], pts[j]
+
+
+def _sloped_edges(x, y, z, row, thick, names) -> dict:
+    """Marginea de jos si cea de sus ale unei arii inclinate: {"bottom": ((x, y), (x, y), z), "top": (...)}."""
+    zlo, zhi = float(z.min()), float(z.max())
+    out = {"label": str(row["Label"]), "story": str(row["Story"])}
+    for key, zz in (("bottom", zlo), ("top", zhi)):
+        sel = np.abs(z - zz) < 1e-6
+        a, b = _extreme_pair(np.stack([x[sel], y[sel]], axis=1))
+        out[key] = ((float(a[0]), float(a[1])), (float(b[0]), float(b[1])), zz)
+    return out
+
+
+def _virtual_edges(name: str, e: dict, thickness: float) -> dict[str, WallInfo]:
+    """Doua pereti verticali subtiri (benzi de EDGE_BAND) pe marginile reale: grinzile/centurile de pe margine se potrivesc pe ele."""
+    out = {}
+    for key, tag, up in (("bottom", "B", True), ("top", "T", False)):
+        a, b, zz = e[key]
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        L = math.hypot(dx, dy) or 1.0
+        z0, z1 = (zz, zz + EDGE_BAND) if up else (zz - EDGE_BAND, zz)
+        pts = [(a[0], a[1], z0), (b[0], b[1], z0), (b[0], b[1], z1), (a[0], a[1], z1)]
+        out[f"{name}#{tag}"] = WallInfo(f"{name}#{tag}", thickness, (dx / L, dy / L), pts, [], z0, z1, e["label"], e["story"], virtual=True)
+    return out
