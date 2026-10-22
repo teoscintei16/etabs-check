@@ -15,6 +15,7 @@ PROJECT_PARAMS = [
     Param("tip_cladire", None, "Tip de clădire (pentru „q topit”)", "", "choice",
           ["rezidential_cadre", "rezidential_pereti", "birouri_cadre", "birouri_pereti", "incarcari_grele"]),
     Param("auto_analiza", "nu", "Rulează automat analiza din aplicație când modelul nu are rezultate (modifică modelul: salvează rezultatele)", "", "choice", ["da", "nu"]),
+    Param("analiza_neliniara", "nu", "Include în analiza automată și cazurile neliniare (pushover / istorie neliniară) — pot dura foarte mult", "", "choice", ["da", "nu"]),
     Param("basement", None, "Există subsol (infrastructură rigidă tip cutie)? „nu” = doar suprastructura, încastrată la bază", "", "choice", ["da", "nu"]),
     Param("basement_stories", None, "Nivelurile de subsol", "", "stories"),
     Param("ground_story", None, "Primul nivel peste ±0.00 (opțional: se deduce din subsoluri)", "", "story"),

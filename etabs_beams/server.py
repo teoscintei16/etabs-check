@@ -235,7 +235,7 @@ def v_state():
 def v_run(req: RunRequest):
     def _f():
         if req.phase == "post" and _store().project.get("auto_analiza") == "da":      # optiune: ruleaza singura analiza daca lipsesc rezultatele
-            if analysis_state(_get_session())["needs_analysis"]:
+            if analysis_state(_get_session(), _nonlinear())["needs_analysis"]:
                 _do_analysis("auto")
         snap = _snapshot(req.reload)
         if req.reload:
@@ -300,12 +300,16 @@ def v_report():
                     headers={"Content-Disposition": f'attachment; filename="raport_{name}_{stamp}.html"', "X-Saved-To": saved.encode("ascii", "ignore").decode()})
 
 
+def _nonlinear() -> bool:
+    return _store().project.get("analiza_neliniara") == "da"
+
+
 def _do_analysis(trigger: str) -> dict:
     """(in firul COM) Ruleaza analiza si inregistreaza rezultatul; invalideaza snapshot-ul."""
     s = _get_session()
     _ANALYSIS.update(state="running", started=time.time(), duration=None, by=trigger, message="Se rulează analiza în ETABS…")
     try:
-        res = run_analysis(s)
+        res = run_analysis(s, _nonlinear())
     except Exception as e:
         _ANALYSIS.update(state="error", duration=round(time.time() - _ANALYSIS["started"], 1), message=str(e))
         raise
@@ -341,7 +345,7 @@ def v_analyze():
 
 @app.get("/api/v/analyze/needed")
 def v_analyze_needed():
-    return run(lambda: analysis_state(_get_session()))
+    return run(lambda: analysis_state(_get_session(), _nonlinear()))
 
 
 @app.put("/api/v/settings")
