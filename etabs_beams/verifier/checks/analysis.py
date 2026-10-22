@@ -31,8 +31,10 @@ def r21_dof_diafragme(ctx):
 
 
 def _count_stories(ctx) -> int:
+    """Etajele care vibreaza: cele peste teren, la cel mai inalt turn (subsolul rigid nu se numara, daca utilizatorul l-a declarat)."""
     st = ctx.snap.table("Story Definitions")
-    return len(st)
+    n = int(st.groupby("Tower").size().max()) if "Tower" in st.columns and len(st) else len(st)
+    return max(n - len(ctx.basement_stories() or []), 0)
 
 
 @check("r10_moduri", 10, "Număr suficient de moduri de vibrație (≥ 3 pe etaj)",

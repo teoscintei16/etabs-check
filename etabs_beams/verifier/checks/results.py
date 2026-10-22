@@ -186,6 +186,9 @@ def r21_torsiune_etaj(ctx):
     from .combos import pattern_tower
     keep = [pattern_tower(str(r["OutputCase"])) in (None, ctx.tower_of(str(r["Story"]))) for _, r in t.iterrows()]   # un caz Tn_* conteaza doar pe turnul Tn
     t = t[keep]
+    basement = ctx.story_ids(ctx.basement_stories() or [])
+    if basement:                                   # cutia rigida a subsolului: raportul max/medie la deplasari aproape nule nu are sens
+        t = t[~t["Story"].astype(str).isin(basement)]
     if t.empty:
         return [Finding(INFO, "Nu există rezultate de torsiune pe turnurile încărcate.")]
     mx = t.loc[t["Ratio"].astype(float).idxmax()]

@@ -15,7 +15,11 @@ def r5_noduri(ctx):
     j = ctx.snap.table("Objects and Elements - Joints")
     if j.empty:
         return []
-    j = j[j["ObjType"].astype(str) == "Joint"].drop_duplicates("ObjName").reset_index(drop=True)
+    j = j[j["ObjType"].astype(str) == "Joint"].drop_duplicates("ObjName")
+    pc = ctx.snap.table("Point Object Connectivity")            # punctele create automat de ETABS (IsAuto = Yes) au coordonate oarecare: nu sunt greseli de desen
+    if not pc.empty and "IsAuto" in pc.columns:
+        j = j[~j["ObjName"].map(sname).isin({sname(n) for n, a in zip(pc["UniqueName"], pc["IsAuto"]) if str(a).strip().lower() == "yes"})]
+    j = j.reset_index(drop=True)
     xyz = j[["GlobalX", "GlobalY", "GlobalZ"]].to_numpy(dtype=float)
     out = []
     names = [sname(n) for n in j["ObjName"]]

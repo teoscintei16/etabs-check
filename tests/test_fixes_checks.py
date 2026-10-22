@@ -14,6 +14,13 @@ class FixOfferTests(unittest.TestCase):
         self.assertEqual([(x["name"], x["axis"], x["value"]) for x in rows], [("7", "X", 0.0), ("7", "Y", 3.0)])
         self.assertEqual(rows[0]["current"], 0.00003)
 
+    def test_auto_points_are_not_drawing_errors(self):
+        j = df([dict(ObjType="Joint", ObjName="7", ObjLabel="7", Story="E1", GlobalX=9.85896, GlobalY=10.0, GlobalZ=4.0),
+                dict(ObjType="Joint", ObjName="8", ObjLabel="8", Story="E1", GlobalX=1.0, GlobalY=2.0, GlobalZ=4.0)])
+        pc = df([dict(UniqueName="7", IsAuto="Yes"), dict(UniqueName="8", IsAuto="No")])
+        r = go({"Objects and Elements - Joints": j, "Point Object Connectivity": pc}, "r5_noduri")
+        self.assertEqual(r["findings"], [])
+
     def test_mesh_findings_offer_standard(self):
         fl = df([dict(MeshOpt="General", Localized="No", MergeJoints="Yes", MaxMeshSize=1.0)])
         wl = df([dict(MaxMeshSize=0.5)])
