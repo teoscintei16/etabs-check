@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from etabs_beams.verifier import Sidecar, run
-from tests.test_continuity import Builder
+from tests.builders import Builder
 from tests.test_verifier_phase1 import Snap, df
 
 

@@ -348,3 +348,6 @@ Modificări în verificator, descoperite cu modelele generate: **numărul de mod
 
 ## 35. Continuitatea verticală (regula 2)
 Verificare nouă `r2_continuitate_verticala` (`checks/continuity.py`): fiecare stâlp și perete care nu e la baza modelului trebuie să aibă dedesubt un stâlp sau un perete (nu o placă sau o grindă). Stâlpii se verifică în punctul de jos, pereții pe 5 eșantioane de-a lungul marginii de jos: nimic sprijinit = eroare, sprijin parțial = avertisment. Găsită la modelele cu subsol mai mare decât turnul, unde peretele turnului stătea pe placa subsolului; creatorul are acum `walls_through_basement` (implicit da; debifat reproduce defectul pentru test: verificatorul dă avertisment la cei 2 pereți parțial sprijiniți).
+
+## 36. Separarea în trei proiecte
+Extragerea grinzilor (detecție lanțuri/centuri, selector, export JSON, CLI `detect`, pagina proprie) a trecut în `etabs-beam-extract` (github.com/teoscintei16/etabs-beam-extract): citire rapidă din tabele, 31 de teste, pornire cu `python -m etabs_beam_extract serve`. Din verificator au ieșit `selector.py`, `export.py`, `continuity.py`, endpoint-ul `/api/detect`, comanda `detect` și tabul vechi de grinzi din GUI. Cele trei proiecte (verificator, creator, extractor) au repo, teste și pornire proprii; codul de bază comun (modele de date, citirea tabelelor) e copiat în fiecare. Teste verificator: 137.

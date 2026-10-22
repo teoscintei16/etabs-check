@@ -1,0 +1,8 @@
+comtypes
+fastapi
+uvicorn
+pandas
+numpy
+scipy
+shapely
+networkx

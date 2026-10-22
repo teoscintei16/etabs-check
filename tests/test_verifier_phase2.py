@@ -7,7 +7,7 @@ import pandas as pd
 from etabs_beams.models import BRACE, Frame
 from etabs_beams.verifier import Sidecar, run
 from etabs_beams.verifier.checks.seismic import G, spectrum_shape
-from tests.test_continuity import Builder
+from tests.builders import Builder
 from tests.test_verifier_phase1 import Snap, df
 
 

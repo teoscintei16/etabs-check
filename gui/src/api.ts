@@ -1,4 +1,4 @@
-import type { AnalysisStatus, Catalog, CheckResult, Phase, VState, CheckReport, DetectResult, ObjRef, SectionCount, Selector, Status } from "./types";
+import type { AnalysisStatus, Catalog, CheckResult, Phase, VState, ObjRef, SectionCount, Status } from "./types";
 
 async function call<T>(url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, body === undefined ? undefined : {
@@ -18,9 +18,6 @@ async function call<T>(url: string, body?: unknown): Promise<T> {
 
 export const getStatus = () => call<Status>("/api/status");
 export const getSections = () => call<SectionCount[]>("/api/sections");
-export const runCheck = (belt_sections: string[]) => call<CheckReport>("/api/check", { belt_sections });
-export const runDetect = (belt_sections: string[], selector: Selector, wall_min_length: number) =>
-  call<DetectResult>("/api/detect", { belt_sections, selector, wall_min_length });
 
 /** Selecteaza in ETABS barele si peretii din lista (tipurile necunoscute sunt ignorate).
  *  clear=false adauga la selectia curenta din ETABS in loc sa o inlocuiasca. */

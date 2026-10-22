@@ -6,7 +6,7 @@ import pandas as pd
 
 from etabs_beams.models import COLUMN, Frame, NULL
 from etabs_beams.verifier import Sidecar, run
-from tests.test_continuity import Builder
+from tests.builders import Builder
 
 
 class Snap:

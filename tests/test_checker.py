@@ -1,9 +1,8 @@
 import unittest
 
 from etabs_beams.checker import ERROR, Extras, report, run_checks
-from etabs_beams.continuity import build_chains
 from etabs_beams.models import BEAM, Frame, SectionInfo, Tolerances
-from tests.test_continuity import Builder
+from tests.builders import Builder
 
 
 def codes(issues):
@@ -71,9 +70,6 @@ class CheckerTests(unittest.TestCase):
         md = b.finish()
         c = codes(run_checks(md, Tolerances()))
         self.assertEqual(c["secondary_beams"].severity, "info")      # grinda secundara: normal, nu avertisment
-        chains = build_chains(md)
-        c = next(c for c in chains if c.members[0].frame == sec)
-        self.assertEqual(sorted(s.kind for s in c.supports), ["beam", "column"])
 
     def _beam_ending_on_belt(self):
         b = Builder()
@@ -89,11 +85,6 @@ class CheckerTests(unittest.TestCase):
     def test_beam_ending_on_belt_over_wall_is_fixed_and_not_floating(self):
         md, nb = self._beam_ending_on_belt()
         self.assertNotIn("beam_floating", codes(run_checks(md, Tolerances(belt_sections=["dummy"]))))
-        from etabs_beams.continuity import build_all
-        beams, belts, _ = build_all(md, Tolerances())
-        end = beams[0].supports[-1]
-        self.assertEqual(end.kind, "wall")
-        self.assertTrue(end.fixed_end)
 
     def test_beam_end_on_wall_face_without_node_is_wall_support(self):
         b = Builder()
@@ -101,8 +92,6 @@ class CheckerTests(unittest.TestCase):
         b.wall("W", (5, -3, 0), (5, 3, 3), thickness=0.3)         # nicio legatura de nod cu grinda
         md = b.finish()
         self.assertNotIn("beam_floating", codes(run_checks(md, Tolerances())))
-        end = build_chains(md)[0].supports[-1]
-        self.assertEqual((end.kind, end.fixed_end), ("wall", True))
 
     def test_truly_floating_beam_is_flagged(self):
         b = Builder()

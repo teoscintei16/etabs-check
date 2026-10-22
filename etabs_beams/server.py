@@ -16,12 +16,10 @@ import time
 from datetime import datetime
 
 from .analysis import analysis_state, run_analysis
-from .api import check_model, detect, list_sections
+from .api import check_model, list_sections
 from .checker import report
 from .connection import EtabsSession, EtabsError
-from .export import to_dict
 from .models import Tolerances
-from .selector import BeamSelector
 
 _pool = ThreadPoolExecutor(max_workers=1, initializer=comtypes.CoInitialize)
 _session: EtabsSession | None = None
@@ -52,23 +50,6 @@ def _get_session() -> EtabsSession:
 
 class CheckRequest(BaseModel):
     belt_sections: list[str] = Field(default_factory=list)
-
-
-class SelectorModel(BaseModel):
-    sections: list[str] = Field(default_factory=list)
-    exclude_sections: list[str] = Field(default_factory=list)
-    stories: list[str] = Field(default_factory=list)
-    exclude_stories: list[str] = Field(default_factory=list)
-    frames: list[str] = Field(default_factory=list)
-    min_length: float | None = None
-    match: str = "any"
-    continuity: str = "any"
-
-
-class DetectRequest(CheckRequest):
-    selector: SelectorModel = Field(default_factory=SelectorModel)
-    wall_min_length: float = 0.8
-    angle_tol: float = 10.0
 
 
 class SelObject(BaseModel):
@@ -106,21 +87,6 @@ def check(req: CheckRequest):
         s = _get_session()
         md, issues, extras = check_model(s, Tolerances(belt_sections=req.belt_sections))
         return report(md, issues, extras)
-    return run(_f)
-
-
-@app.post("/api/detect")
-def detect_api(req: DetectRequest):
-    def _f():
-        s = _get_session()
-        tol = Tolerances(belt_sections=req.belt_sections, wall_min_length=req.wall_min_length,
-                         angle_deg=req.angle_tol)
-        sel = BeamSelector(**req.selector.model_dump())
-        bm = detect(s, tol, sel)
-        out = to_dict(bm, s.filename, ("beams", "belts"))
-        out["sections_in_chains"] = sorted({m.section for c in bm.chains for m in c.members})
-        out["stories"] = sorted({c.story for c in bm.chains})
-        return out
     return run(_f)
 
 
