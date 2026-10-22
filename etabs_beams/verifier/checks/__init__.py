@@ -1,2 +1,2 @@
 """Importul modulelor inregistreaza verificarile in registru."""
-from . import analysis, areas, combos, frames, geometry, legacy, loads, materials, results, seismic, structure  # noqa: F401
+from . import analysis, areas, combos, continuity, frames, geometry, legacy, loads, materials, results, seismic, structure  # noqa: F401
