@@ -11,6 +11,7 @@ from scipy.spatial import cKDTree
 from ...geometry import end_on_beam_hits
 from ..elements import build_area_elements
 from ..registry import ERROR, INFO, WARNING, Finding, Param, check
+from .shells import shell_points
 from .util import col, sname
 
 
@@ -257,11 +258,12 @@ def r4_centuri_capete(ctx):
         f = model.frames[b]
         belt_nodes |= {f.p1, f.p2}
     on_belts = {p for _f, p, _g in end_on_beam_hits(model, model.beam_names, targets=model.belt_names)}
+    shell_pts = shell_points(ctx)                              # nodul peretelui pe care reazema o coaja: nu e o descarcare de grinda
     miss = []
     for n in model.beam_names:
         f = model.frames[n]
-        for p in (f.p1, f.p2):
-            if model.node_areas.get(p) and p not in belt_nodes and p not in on_belts:
+        for p, xyz in ((f.p1, f.start), (f.p2, f.end)):
+            if model.node_areas.get(p) and p not in belt_nodes and p not in on_belts and tuple(round(float(v), 3) for v in xyz) not in shell_pts:
                 miss.append(n)
                 break
     if not miss:

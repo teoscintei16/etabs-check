@@ -77,6 +77,13 @@ class AnalysisTests(unittest.TestCase):
         bad = {"Modal Case Definitions - Ritz": df([dict(Name="R", LoadType="Accel", LoadName="Accel UZ")])}
         self.assertEqual(go(Snap(bad), "r10_ritz")["status"], "error")
 
+    def test_ritz_z_vector_is_required_only_with_vertical_mass(self):
+        xy = df([dict(Name="R", LoadType="Accel", LoadName=f"Accel {a}") for a in ("UX", "UY")])
+        lateral = {"Modal Case Definitions - Ritz": xy, "Mass Source Definition": df([dict(Name="M", IncLateral="Yes", IncVertical="No")])}
+        vertical = {"Modal Case Definitions - Ritz": xy, "Mass Source Definition": df([dict(Name="M", IncLateral="Yes", IncVertical="Yes")])}
+        self.assertEqual(go(Snap(lateral), "r10_ritz")["status"], "ok")
+        self.assertEqual(go(Snap(vertical), "r10_ritz")["status"], "warning")
+
     def test_ritz_continuation_rows_are_not_separate_cases(self):
         rows = [dict(Name="R", MassSource="Ms", MaxModes=12, LoadType="Accel", LoadName="Accel UX")]
         rows += [dict(Name="R", MassSource="", MaxModes=float("nan"), LoadType="Accel", LoadName=f"Accel {a}") for a in ("UY", "UZ")]

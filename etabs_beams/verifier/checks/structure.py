@@ -6,6 +6,7 @@ import re
 from ...models import BRACE
 from ..registry import ERROR, INFO, WARNING, Finding, Param, check
 from .frames import _end_released, _releases
+from .shells import TILT_MIN_DEG, inclined_slabs, shell_ribs
 from .util import col, sname, yes
 
 
@@ -138,6 +139,13 @@ def r3_diafragme(ctx):
         have = {sname(r["UniqueName"]) for _, r in dsg.iterrows() if str(r["Diaphragm"]).strip() not in ("None", "")} if not dsg.empty else set()
         skip = str(ctx.p("fara_diafragma_exceptii")).strip().lower()
         miss = slabs[~slabs["UniqueName"].map(sname).isin(have)]
+        shells = miss[miss["UniqueName"].map(sname).isin(inclined_slabs(ctx))]          # coji (placi inclinate): nu sunt planseu, nu au diafragma
+        miss = miss.drop(shells.index)
+        if len(shells):
+            out.append(Finding(INFO, f"{len(shells)} plăci înclinate (> {TILT_MIN_DEG:g}° față de orizontală: coji sau rampe) nu sunt asignate unei diafragme — "
+                                     "corect, o suprafață înclinată nu e planșeu; forțele laterale se transmit prin rigiditatea ei de coajă.",
+                               [("area", sname(r["UniqueName"]), {"label": str(r["Label"]), "story": str(r["Story"]), "section": str(r["SectProp"])})
+                                for _, r in shells.head(200).iterrows()], total=len(shells)))
         tw = t("Tower and Base Story Definitions")
         base_story = ({str(r["BSName"]) for _, r in tw.iterrows()} | {f"{r['Tower']}-{r['BSName']}" for _, r in tw.iterrows()}) if not tw.empty else set()
         miss = miss[~miss["Story"].astype(str).isin(base_story)]          # placile nivelului de baza (radier) nu au diafragma
@@ -198,7 +206,8 @@ def r18_constructie_etapizata(ctx):
 def r23_truss_tension(ctx):
     out = []
     model = ctx.snap.model
-    braces = [f.name for f in model.frames.values() if f.orientation == BRACE and f.section]
+    ribs = shell_ribs(ctx)                                     # coastele cojilor sunt incastrate in coaja: nu sunt contravantuiri
+    braces = [f.name for f in model.frames.values() if f.orientation == BRACE and f.section and f.name not in ribs]
     if braces:
         rel = _releases(ctx)
         fixed = [b for b in braces if not (_end_released(rel.get(b), "I") and _end_released(rel.get(b), "J"))]

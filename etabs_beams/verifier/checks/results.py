@@ -9,6 +9,7 @@ import numpy as np
 from ..registry import ERROR, INFO, WARNING, Finding, Param, check
 from .combos import expand, load_combos, seismic_info
 from .seismic import G, spectrum
+from .shells import shell_stories
 from .util import col, sname, yes
 
 POST = "post"
@@ -82,6 +83,11 @@ def r25_mesaje_analiza(ctx):
         out.append(Finding(ERROR, f"{len(severe)} mesaje de analiză indică instabilitate sau pierdere de precizie.",
                            data={"mesaje": sorted({str(x)[:160] for x in severe[msg]})[:8]}))
     other = m[m[typ].astype(str).str.lower().isin(["warning", "error"]) & ~m.index.isin(severe.index)]
+    benign = other[other[msg].astype(str).str.contains("ZERO RITZ STARTING VECTORS", case=False)]       # vector Ritz nul (ex. pe Z fara masa verticala): eliminat, fara efect
+    if len(benign):
+        out.append(Finding(INFO, "ETABS a eliminat un vector Ritz de pornire nul (de obicei accelerația pe Z când sursa de masă nu include masa verticală): fără efect.",
+                           data={"mesaje": sorted({str(x)[:160] for x in benign[msg]})}))
+        other = other.drop(benign.index)
     if len(other):
         out.append(Finding(WARNING, f"{len(other)} avertismente/erori de analiză.", data={"mesaje": sorted({str(x)[:160] for x in other[msg]})[:8]}))
     return out
@@ -107,6 +113,12 @@ def r6_mase_etaj(ctx):
     out = []
     lim = ctx.p("salt_masa_pct") / 100.0
     zero, jumps = [], []
+    shells = shell_stories(ctx)
+    if shells:                                           # coji: masa lor intra in nivelurile alaturate, nu pe nivelul lor; fara salturi de evaluat pe ele
+        out.append(Finding(INFO, f"Nivelurile {', '.join(sorted(shells))} contin doar coji (placi inclinate): masa lor nu se atribuie nivelului propriu in ETABS, "
+                                 "deci nu se evalueaza masa zero si salturile de masa pe ele."))
+        ms = ms[~ms["Story"].isin(shells)]
+        is_base, skip = is_base[ms.index], skip[ms.index]
     for tower, g in ms[~is_base & ~skip].groupby("_tower", sort=False):
         st, mx = list(g["Story"]), g["UX"].astype(float).tolist()
         zero += [s for s, v in zip(st, mx) if v <= 0 and (with_elements is None or s in with_elements)]

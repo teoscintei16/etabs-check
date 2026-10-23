@@ -77,12 +77,15 @@ def r10_ritz(ctx):
     if df.empty:
         return []
     out = []
+    ms = ctx.snap.table("Mass Source Definition")
+    iv = col(ms, "IncVertical") if not ms.empty else None
+    vertical = bool(iv) and any(yes(v) for v in ms[iv])             # fara masa verticala, vectorul de pornire pe Z ar fi nul (ETABS il elimina)
     ltype, lname = col(df, "LoadType"), col(df, "LoadName")
     df = df.copy()
     df["Name"] = df["Name"].replace("", None).ffill()
     for name, grp in df.groupby("Name"):
         accel = [str(n).strip() for t, n in zip(grp[ltype], grp[lname]) if "accel" in str(t).lower()] if ltype and lname else []
-        miss = [ax for ax, rx in _AXES.items() if not any(rx.match(a) for a in accel)]
+        miss = [ax for ax, rx in _AXES.items() if (vertical or ax != "Z") and not any(rx.match(a) for a in accel)]
         if "X" in miss or "Y" in miss:
             out.append(Finding(ERROR, f"Cazul Ritz „{name}” nu include accelerația pe {', '.join(m for m in miss if m != 'Z')} "
                                       "ca vector de încărcare de pornire.", [("loadcase", str(name))], {"lipsa": miss},

@@ -8,6 +8,7 @@ import pandas as pd
 from ...geometry import end_on_beam_hits
 from ...models import COLUMN, NULL
 from ..registry import ERROR, INFO, WARNING, Finding, Param, check
+from .shells import shell_ribs
 from .util import col, frame_objects, sname, yes
 
 _REL = ("P", "V2", "V3", "T", "M2", "M3")
@@ -94,13 +95,14 @@ def r13_zone_rigide(ctx):
     if df.empty:
         return []
     model = ctx.snap.model
+    ribs = shell_ribs(ctx)
     rf, uc, oo = col(df, "RigidFact"), col(df, "UniqueName"), col(df, "OffsetOpt")
     lo = ctx.p("factor_rigid_min")
     beams, cols = [], []
     for _, r in df.iterrows():
         n = sname(r[uc])
         f = model.frames.get(n)
-        if f is None or not f.section or n in model.belt_names or f.orientation == NULL:
+        if f is None or not f.section or n in model.belt_names or f.orientation == NULL or n in ribs:
             continue
         auto_no_zone = str(r[oo]).lower().startswith("auto") and (r[rf] if r[rf] == r[rf] else 0) < lo
         if auto_no_zone:
