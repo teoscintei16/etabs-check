@@ -51,6 +51,9 @@ class PostTests(unittest.TestCase):
         self.assertIn("X", r["findings"][0]["message"])
         r = go({"Modal Participating Mass Ratios": modal(0.95, 0.93, rz_first=True)}, "r10_masa_participanta")
         self.assertEqual(r["status"], "warning")                                    # primul mod = torsiune
+        third = modal(0.95, 0.93)
+        third.loc[third["Mode"] == 3, "RZ"] = 0.7                                   # torsiune la modul 3: situatia normala, fara avertisment
+        self.assertEqual(go({"Modal Participating Mass Ratios": third}, "r10_masa_participanta")["status"], "info")
 
     def test_analysis_messages(self):
         m = df([dict(Type="Information", Message="TOTAL TIME"), dict(Type="Warning", Message="Ill-conditioned matrix at joint 5")])
@@ -79,6 +82,16 @@ class PostTests(unittest.TestCase):
         t["Centers Of Mass And Rigidity"] = df([dict(Story="E1", Diaphragm="D1", XCM=10.0, YCM=0.0, XCR=16.0, YCR=0.0)])    # e = 6/20 = 30 %
         self.assertEqual(go(t, "r21_cm_cr")["status"], "warning")
         self.assertEqual(go({}, "r21_cm_cr")["status"], "error")
+
+    def test_missing_cr_is_information_with_any_diaphragm_type(self):
+        st = df([dict(Story=s, Tower="T1") for s in ("E2", "E1")])
+        cm = df([dict(Story="E1", Diaphragm="D1", XCM=10.0, YCM=0.0, XCR=float("nan"), YCR=float("nan"))])
+        t = {"Centers Of Mass And Rigidity": cm, "Story Definitions": st, "Diaphragm Definitions": df([dict(Name="D1", Rigidity="Semi Rigid")])}
+        r = go(t, "r21_cm_cr")
+        self.assertEqual(r["status"], "info")
+        self.assertIn("Semi Rigid", r["findings"][0]["message"])
+        t["Diaphragm Definitions"] = df([dict(Name="D1", Rigidity="Rigid")])
+        self.assertEqual(go(t, "r21_cm_cr")["status"], "info")                         # nici cu diafragma rigida ETABS nu da mereu CR
 
     def test_torsion(self):
         auto = df([dict(Name="XP", XDir="No", XDirPlusE="Yes", XDirMinusE="No", YDir="No", YDirPlusE="No", YDirMinusE="No")])

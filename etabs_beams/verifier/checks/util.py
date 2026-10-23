@@ -35,3 +35,11 @@ def col(df: pd.DataFrame, *candidates: str) -> str | None:
 
 def frame_objects(names, kind: str = "frame") -> list[tuple]:
     return [(kind, sname(n)) for n in names]
+
+
+def header_rows(df):
+    """Randurile-antet ale unui caz modal: la Ritz fiecare vector de pornire suplimentar e un rand de continuare (fara sursa de masa/moduri)."""
+    c = col(df, "MassSource")
+    if not c or df.empty:
+        return df
+    return df[df[c].astype(str).str.strip().replace("nan", "") != ""]

@@ -71,6 +71,19 @@ class AnalysisTests(unittest.TestCase):
         good = {"Modal Case Definitions - Ritz": df([dict(Name="R", LoadType="Acceleration", LoadName=a) for a in ("UX", "UY", "UZ")])}
         self.assertEqual(go(Snap(good), "r10_ritz")["status"], "ok")
 
+    def test_ritz_accepts_etabs_accel_names(self):
+        good = {"Modal Case Definitions - Ritz": df([dict(Name="R", LoadType="Accel", LoadName=f"Accel {a}") for a in ("UX", "UY", "UZ")])}
+        self.assertEqual(go(Snap(good), "r10_ritz")["status"], "ok")
+        bad = {"Modal Case Definitions - Ritz": df([dict(Name="R", LoadType="Accel", LoadName="Accel UZ")])}
+        self.assertEqual(go(Snap(bad), "r10_ritz")["status"], "error")
+
+    def test_ritz_continuation_rows_are_not_separate_cases(self):
+        rows = [dict(Name="R", MassSource="Ms", MaxModes=12, LoadType="Accel", LoadName="Accel UX")]
+        rows += [dict(Name="R", MassSource="", MaxModes=float("nan"), LoadType="Accel", LoadName=f"Accel {a}") for a in ("UY", "UZ")]
+        snap = Snap({"Modal Case Definitions - Ritz": df(rows)})
+        self.assertFalse(any("diferite" in f["message"] for f in go(snap, "r6_sursa_masa")["findings"]))
+        self.assertEqual(go(snap, "r10_ritz")["status"], "ok")
+
     def test_pdelta(self):
         self.assertEqual(go(Snap({"P-Delta Option Definition": df([dict(AutoMethod="None")])}), "r10_pdelta")["status"], "warning")
         t = {"P-Delta Option Definition": df([dict(AutoMethod="None")]),

@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 
 from ..registry import ERROR, INFO, WARNING, Finding, Param, check
-from .util import col, sname, yes
+from .util import col, header_rows, sname, yes
 
 _DOF = ["UX", "UY", "UZ", "RX", "RY", "RZ"]
 
@@ -52,7 +52,7 @@ def r10_moduri(ctx):
         if df.empty:
             continue
         mx = col(df, "MaxModes")
-        for _, r in df.iterrows():
+        for _, r in header_rows(df).iterrows():
             have = int(r[mx]) if mx and r[mx] == r[mx] else 0
             if stories and have < need:
                 out.append(Finding(ERROR,
@@ -64,7 +64,7 @@ def r10_moduri(ctx):
     return out
 
 
-_AXES = {"X": re.compile(r"^(UX|U1)$", re.I), "Y": re.compile(r"^(UY|U2)$", re.I), "Z": re.compile(r"^(UZ|U3)$", re.I)}
+_AXES = {"X": re.compile(r"^(Accel\s+)?(UX|U1)$", re.I), "Y": re.compile(r"^(Accel\s+)?(UY|U2)$", re.I), "Z": re.compile(r"^(Accel\s+)?(UZ|U3)$", re.I)}
 
 
 def _ritz_fix(name, missing) -> dict:

@@ -47,3 +47,31 @@ class FixOfferTests(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+class GeneralMeshForCurvedSlabsTests(unittest.TestCase):
+    FLOOR_GLOBAL = "Analysis Options - Automatic Mesh Settings for Floors"
+
+    def tables(self, option, rect: bool):
+        from tests.test_verifier_phase3 import Mesh
+        m = Mesh()
+        if rect:
+            for i in range(4):
+                m.rect(str(i), "Floor", "S1", i * 2, 0, 2, 2)
+        else:                                            # sectoare/triunghiuri: nu sunt dreptunghiuri cu laturile pe axe
+            for i in range(4):
+                js = [m.jt(0.0, 0.0, 3.0, "S1"), m.jt(4.0 + i, 0.0, 3.0, "S1"), m.jt(3.0, 3.0 + i, 3.0, "S1")]
+                m.areas.append(dict(Story="S1", ElmName=f"t{i}", ObjType="Floor", ObjLabel=f"L{i}", ObjName=str(i), ElmJt1=js[0], ElmJt2=js[1], ElmJt3=js[2], ElmJt4=""))
+        fl = df([dict(MeshOpt=option, Localized="Yes", MergeJoints="Yes", MaxMeshSize=0.5)])
+        return {**m.tables(), self.FLOOR_GLOBAL: fl}
+
+    def test_general_is_the_standard_for_non_rectangular_slabs_and_rectangular_otherwise(self):
+        r = go(self.tables("General", rect=False), "r5_mesh")
+        self.assertEqual(r["findings"], [])
+        r = go(self.tables("Rectangular", rect=False), "r5_mesh")
+        f = r["findings"][0]
+        self.assertIn("standard: General", f["message"])
+        self.assertEqual(f["fix"]["args"]["floor_option"], "General")
+        r = go(self.tables("General", rect=True), "r5_mesh")
+        self.assertEqual(r["findings"][0]["fix"]["args"]["floor_option"], "Rectangular")
+        self.assertEqual(go(self.tables("Rectangular", rect=True), "r5_mesh")["findings"], [])

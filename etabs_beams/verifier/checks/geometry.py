@@ -56,22 +56,43 @@ def r5_noduri(ctx):
     return out
 
 
+def nonrect_floors(ctx, share: float = 0.1) -> bool:
+    """Cel putin `share` din placi nu sunt dreptunghiuri cu laturile pe axe (triunghiuri, trapeze, sectoare circulare…)."""
+    from ..elements import build_area_elements
+    e = build_area_elements(ctx.snap.table, ctx.snap.cache)
+    if e.empty:
+        return False
+    f = e[e["ObjType"].astype(str) == "Floor"].drop_duplicates("ObjName")
+    if f.empty:
+        return False
+    xs = np.stack([f[f"X{k}"].to_numpy(dtype=float) for k in range(1, 5)], axis=1)
+    ys = np.stack([f[f"Y{k}"].to_numpy(dtype=float) for k in range(1, 5)], axis=1)
+    tri = np.isnan(xs[:, 3])
+    tol = 1e-3
+    axis_aligned = np.ones(len(f), dtype=bool)
+    for a, b in ((0, 1), (1, 2), (2, 3), (3, 0)):
+        dx, dy = np.abs(xs[:, a] - xs[:, b]), np.abs(ys[:, a] - ys[:, b])
+        axis_aligned &= (dx < tol) | (dy < tol)
+    return float(((~axis_aligned) | tri).mean()) >= share
+
+
 @check("r5_mesh", 5, "Setările de mesh pentru plăci și pereți",
        params=[Param("mesh_max", 0.5, "Dimensiunea maximă aproximativă a elementelor (standard)", "m")])
 def r5_mesh(ctx):
     out = []
     lim = ctx.p("mesh_max")
 
-    def fx(scope, label):
-        return {"id": "apply_mesh_standard", "label": label, "args": {"scope": scope, "mesh_max": lim}}
+    def fx(scope, label, **extra):
+        return {"id": "apply_mesh_standard", "label": label, "args": {"scope": scope, "mesh_max": lim, **extra}}
 
     fl = ctx.snap.table("Analysis Options - Automatic Mesh Settings for Floors")
+    want_opt = "General" if nonrect_floors(ctx) else "Rectangular"      # placi cu contur curb / neortogonal: mesh „General” (cel „Rectangular” lasa elemente-ciobuc)
     if not fl.empty:
         r = fl.iloc[0]
         c = col(fl, "MaxMeshSize")
         bad = []
-        if str(r.get("MeshOpt", "")).strip().lower() != "rectangular":
-            bad.append(f"opțiunea de mesh este „{r.get('MeshOpt')}” (standard: Rectangular)")
+        if str(r.get("MeshOpt", "")).strip().lower() != want_opt.lower():
+            bad.append(f"opțiunea de mesh este „{r.get('MeshOpt')}” (standard: {want_opt}" + (", pentru plăci neortogonale" if want_opt == "General" else "") + ")")
         for f, label in (("Localized", "Use Localized Meshing"), ("MergeJoints", "Merge Joints")):
             if f in fl.columns and not yes(r[f]):
                 bad.append(f"„{label}” este dezactivat")
@@ -79,7 +100,7 @@ def r5_mesh(ctx):
             bad.append(f"dimensiunea maximă este {float(r[c]):g} m (standard: {lim:g} m)")
         if bad:
             out.append(Finding(WARNING, "Setările globale de mesh ale plăcilor diferă de standard: " + "; ".join(bad) + ".",
-                               [("mesh", "Floors")], fix=fx("floor_global", "Aplică standardul plăcilor")))
+                               [("mesh", "Floors")], fix=fx("floor_global", "Aplică standardul plăcilor", floor_option=want_opt)))
     wl = ctx.snap.table("Analysis Options - Automatic Rectangular Mesh Options for Walls")
     c = col(wl, "MaxMeshSize") if not wl.empty else None
     if c and abs(float(wl.iloc[0][c]) - lim) > 1e-9:

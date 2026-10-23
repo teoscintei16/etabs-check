@@ -59,11 +59,11 @@ def r10_masa_participanta(ctx):
                                    {"moduri": int(len(g)), f"suma_{ax}": round(last, 4)}))
             else:
                 msg.append(f"{ax[1]}: {lim * 100:g} % la modul {int(reach['Mode'].iloc[0])}")
-        first = g.head(3)
+        first = g.head(2)                                        # primele doua moduri trebuie sa fie de translatie; al treilea de torsiune e normal
         tors = [int(r["Mode"]) for _, r in first.iterrows() if float(r["RZ"]) > max(float(r["UX"]), float(r["UY"])) and float(r["RZ"]) > 0.1]
         if tors:
-            out.append(Finding(WARNING, f"Cazul „{case}”: modul(urile) {', '.join(map(str, tors))} dintre primele trei sunt predominant de torsiune "
-                                        "(structură sensibilă la torsiune).", [("loadcase", str(case))]))
+            out.append(Finding(WARNING, f"Cazul „{case}”: modul(urile) {', '.join(map(str, tors))} dintre primele două sunt predominant de torsiune "
+                                        "(structură sensibilă la torsiune: primele două moduri ar trebui să fie de translație).", [("loadcase", str(case))]))
         if msg:
             out.append(Finding(INFO, f"Cazul „{case}”: " + "; ".join(msg) + f". T1 = {float(g['Period'].iloc[0]):.3f} s."))
     return out
@@ -128,6 +128,11 @@ def r6_mase_etaj(ctx):
 
 
 # ---------------------------------------------------------------- 21: CM-CR si torsiune
+def nan_any(t) -> bool:
+    """Exista niveluri cu CR necalculat (atunci lipsa nivelurilor nu e semnificativa separat)."""
+    return bool(len(t)) and bool(t[["XCR", "YCR"]].isna().any().any())
+
+
 @check("r21_cm_cr", 21, "Excentricitatea CM–CR pe etaj (față de latura clădirii)",
        params=[Param("ecc_max_pct", 15.0, "Excentricitate CM–CR maximă admisă", "% din latură")], phase=POST)
 def r21_cm_cr(ctx):
@@ -143,7 +148,7 @@ def r21_cm_cr(ctx):
         stories = [ctx.story_id(tw, st) for tw in ctx.towers() for st in ctx.stories()]
     have = {str(x) for x in t["Story"]}
     miss = [x for x in stories if x not in have]
-    if miss and stories:
+    if miss and stories and len(miss) < len(have) + len(miss) and not nan_any(t):
         out.append(Finding(WARNING, f"CM/CR sunt disponibile doar pentru {len(stories) - len(miss)} din {len(stories)} niveluri cu planșeu (lipsesc: {', '.join(miss[:12])}"
                                     f"{'…' if len(miss) > 12 else ''}): la niveluri fără diafragmă nu se poate evalua torsiunea."))
     j = ctx.snap.table("Objects and Elements - Joints")
@@ -164,8 +169,11 @@ def r21_cm_cr(ctx):
         rows.append({"etaj": s, "ex_pct": round(ex * 100, 1), "ey_pct": round(ey * 100, 1)})
         if max(ex, ey) * 100 > ctx.p("ecc_max_pct"):
             bad.append(s)
-    if nan:
-        out.append(Finding(WARNING, f"Centrul de rigiditate nu a fost calculat la: {', '.join(nan)}."))
+    if nan:                                                    # ETABS nu da CR la toate modelele (nici cu diafragme rigide): nu e un defect al modelului
+        dia = ctx.snap.table("Diaphragm Definitions")
+        kinds = sorted({str(r["Rigidity"]) for _, r in dia.iterrows()}) if not dia.empty else []
+        out.append(Finding(INFO, f"Centrul de rigiditate nu a fost calculat de ETABS la {len(nan)} niveluri (diafragme: {', '.join(kinds) or '—'}): excentricitatea CM–CR nu se poate evalua; "
+                                 "torsiunea se evaluează din deplasări (raportul maxim/mediu, regula 21)."))
     if bad:
         out.append(Finding(WARNING, f"Excentricitatea CM–CR depășește {ctx.p('ecc_max_pct'):g} % din latura clădirii la: {', '.join(bad)}.", data={"niveluri": rows}))
     elif rows:

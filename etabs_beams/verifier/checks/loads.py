@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 
 from ..registry import ERROR, INFO, WARNING, Finding, check
-from .util import col, sname, yes
+from .util import col, header_rows, sname, yes
 
 
 @check("r22_greutate_proprie", 22, "Multiplicatorul greutății proprii: 1 la un singur tipar Dead, 0 în rest")
@@ -92,7 +92,7 @@ def r6_sursa_masa(ctx):
         df = ctx.snap.table(key)
         c = col(df, "MassSource") if not df.empty else None
         if c:
-            modal += [(str(r["Name"]), str(r[c])) for _, r in df.iterrows()]
+            modal += [(str(r["Name"]), str(r[c])) for _, r in header_rows(df).iterrows()]
     if len({m for _n, m in modal}) > 1:
         out.append(Finding(WARNING, "Cazurile modale folosesc surse de masă diferite: " + ", ".join(f"{n}→{m}" for n, m in modal) + ".",
                            [("loadcase", n) for n, _m in modal]))

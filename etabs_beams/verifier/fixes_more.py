@@ -281,13 +281,16 @@ _MESH_WANT = {"floor_global": {"MeshOpt": "Rectangular", "Localized": "Yes", "Me
               "floor_areas": {"MeshOption": "Default", "Restraints": "Yes"}, "wall_areas": {"MeshOption": "Auto Rectangular", "Restraints": "Yes"}}
 
 
-def _mesh_changes(sap, scope: str, size: float) -> dict:
+def _mesh_changes(sap, scope: str, size: float, floor_option: str = "Rectangular") -> dict:
     """{cheie: {camp: valoare}} doar pentru ce difera de standard."""
     _t, key, kf = _SCOPES[scope]
     _v, _f, rows = read_table(sap, key)
+    want = dict(_MESH_WANT[scope])
+    if scope == "floor_global":
+        want["MeshOpt"] = floor_option                      # „General” la placi neortogonale (alesa de verificare)
     out = {}
     for r in rows:
-        diff = {f: v for f, v in _MESH_WANT[scope].items() if str(r.get(f, "")).strip().lower() != v.lower()}
+        diff = {f: v for f, v in want.items() if str(r.get(f, "")).strip().lower() != v.lower()}
         if scope.endswith("global"):
             try:
                 if abs(float(r["MaxMeshSize"]) - size) > 1e-9:
@@ -308,7 +311,7 @@ class ApplyMeshStandard:
         sap = session.model
         size = float(args.get("mesh_max", 0.5))
         what, _key, _kf = _SCOPES[args["scope"]]
-        ch = _mesh_changes(sap, args["scope"], size)
+        ch = _mesh_changes(sap, args["scope"], size, args.get("floor_option", "Rectangular"))
         lines = []
         for f in sorted({f for c in ch.values() for f in c}):
             vals = sorted({v[f] for v in ch.values() if f in v})
@@ -328,7 +331,7 @@ class ApplyMeshStandard:
             raise EtabsError("Dimensiunea maximă a meshului trebuie să fie pozitivă.")
         _what, key, kf = _SCOPES[args["scope"]]
         undo = {"was_locked": _unlock(sap), "table": key, "keyfield": kf}
-        undo["old"] = edit_table(sap, key, kf, _mesh_changes(sap, args["scope"], size))
+        undo["old"] = edit_table(sap, key, kf, _mesh_changes(sap, args["scope"], size, args.get("floor_option", "Rectangular")))
         return undo
 
     @staticmethod
