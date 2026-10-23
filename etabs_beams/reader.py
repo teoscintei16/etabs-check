@@ -21,6 +21,9 @@ def _section_info(sap, name: str) -> SectionInfo:
         if kind_code == 9:        # Circle
             v = ok(sap.PropFrame.GetCircle(name))
             return SectionInfo(name, "circle", depth=v[2], width=v[2])
+        if kind_code == 7:        # Pipe (teava de otel): diametrul exterior
+            v = ok(sap.PropFrame.GetPipe(name))
+            return SectionInfo(name, "circle", depth=v[2], width=v[2])
         v = ok(sap.PropFrame.GetRectangle(name))
         return SectionInfo(name, "rect", depth=v[2], width=v[3])    # T3, T2
     except Exception:

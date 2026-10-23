@@ -81,6 +81,16 @@ def shell_stories(ctx) -> set[str]:
     return set(by[by].index)
 
 
+def frame_only_stories(ctx) -> set[str]:
+    """Nivelurile fara nicio arie (planseu sau perete): catarg / spire de otel; masa lor nu e comparabila cu cea a nivelurilor de planseu."""
+    asg = ctx.snap.table("Area Assignments - Section Properties")
+    mat = ctx.snap.table("Material List by Story")
+    if asg.empty or mat.empty:
+        return set()
+    with_areas = set(asg["Story"].astype(str))
+    return {s for s in mat["Story"].astype(str).unique() if s not in with_areas and s.lower() != "base"}
+
+
 def shell_points(ctx) -> set[tuple[float, float, float]]:
     return _surfaces(ctx)[1]
 

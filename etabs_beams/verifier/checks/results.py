@@ -9,7 +9,7 @@ import numpy as np
 from ..registry import ERROR, INFO, WARNING, Finding, Param, check
 from .combos import expand, load_combos, seismic_info
 from .seismic import G, spectrum
-from .shells import shell_stories
+from .shells import frame_only_stories, shell_stories
 from .util import col, sname, yes
 
 POST = "post"
@@ -114,6 +114,11 @@ def r6_mase_etaj(ctx):
     lim = ctx.p("salt_masa_pct") / 100.0
     zero, jumps = [], []
     shells = shell_stories(ctx)
+    masts = frame_only_stories(ctx)
+    if masts:                                            # spire/catarg din otel: nu au planseu, masa lor nu intra in comparatia de salturi
+        out.append(Finding(INFO, f"Nivelurile {', '.join(sorted(masts))} nu au plăci sau pereți (catarg/spire): nu se evaluează masa zero și salturile de masă pe ele."))
+        ms = ms[~ms["Story"].isin(masts)]
+        is_base, skip = is_base[ms.index], skip[ms.index]
     if shells:                                           # coji: masa lor intra in nivelurile alaturate, nu pe nivelul lor; fara salturi de evaluat pe ele
         out.append(Finding(INFO, f"Nivelurile {', '.join(sorted(shells))} contin doar coji (placi inclinate): masa lor nu se atribuie nivelului propriu in ETABS, "
                                  "deci nu se evalueaza masa zero si salturile de masa pe ele."))
@@ -193,6 +198,12 @@ def r21_cm_cr(ctx):
     return out
 
 
+def _case_axis(name: str):
+    """„X” / „Y” pentru cazurile seismice cu directie in nume (EXP, EYN, SPECX, S_+EXP, …); None daca nu se poate stabili."""
+    m = re.search(r"(?:SPEC|E)([XY])[PN]?$", name)
+    return m.group(1) if m else None
+
+
 @check("r21_torsiune_etaj", 21, "Torsiunea de etaj: raportul deplasare maximă / medie la seism",
        params=[Param("torsiune_warn", 1.2, "Raport maxim/mediu peste care structura e neregulată la torsiune", ""),
                Param("torsiune_err", 1.5, "Raport maxim/mediu peste care torsiunea e excesivă", "")], phase=POST)
@@ -211,6 +222,10 @@ def r21_torsiune_etaj(ctx):
         t = t[~t["Story"].astype(str).isin(basement)]
     if t.empty:
         return [Finding(INFO, "Nu există rezultate de torsiune pe turnurile încărcate.")]
+    axis = t["OutputCase"].astype(str).map(_case_axis)               # torsiunea se judeca in directia fortei: perpendicular, deriva medie e neglijabila (raport fara sens)
+    t = t[axis.isna() | (axis == t["Direction"].astype(str))]
+    if t.empty:
+        return [Finding(INFO, "Nu există rezultate de torsiune în direcția forțelor seismice.")]
     mx = t.loc[t["Ratio"].astype(float).idxmax()]
     worst = t.sort_values("Ratio", ascending=False).head(5)
     data = [{"etaj": str(r["Story"]), "caz": str(r["OutputCase"]), "directie": str(r["Direction"]), "raport": round(float(r["Ratio"]), 3)} for _, r in worst.iterrows()]

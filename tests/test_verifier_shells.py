@@ -72,5 +72,20 @@ class RibTests(unittest.TestCase):
         self.assertEqual([o["name"] for o in f["objects"]], [free])
 
 
+class MastStoryTests(unittest.TestCase):
+    def tables(self):
+        masses = df([dict(Story="E2", UX=1000.0, UY=1000.0, UZ=0), dict(Story="E3", UX=900.0, UY=900.0, UZ=0),
+                     dict(Story="M1", UX=20.0, UY=20.0, UZ=0), dict(Story="Base", UX=100.0, UY=100.0, UZ=0)])
+        mat = df([dict(Story=s, ObjectType="All", Weight=1.0, FloorArea=1.0) for s in ("E2", "E3", "M1")])
+        asg = df([dict(Story=s, Label=f"L{s}", UniqueName=str(i), SectProp="P", PropType="Slab") for i, s in enumerate(("E2", "E3"))])
+        return {"Mass Summary by Story": masses, "Material List by Story": mat, "Area Assignments - Section Properties": asg}
+
+    def test_frame_only_mast_stories_are_not_compared_for_mass_jumps(self):
+        r = go(Snap(self.tables()), "r6_mase_etaj")
+        msgs = " ".join(f["message"] for f in r["findings"])
+        self.assertEqual([f for f in r["findings"] if f["severity"] != "info"], [])  # 900 -> 20 ar fi un salt de 98 %
+        self.assertIn("M1", msgs)                                                   # dar nivelul e mentionat ca fiind catarg
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -54,6 +54,14 @@ class SpectrumTests(unittest.TestCase):
         self.assertEqual(r["status"], "error")
         self.assertTrue(any("g (9.81)" in f["message"] for f in r["findings"]))
 
+    def test_deliberate_amplification_is_information_but_extreme_scale_is_an_error(self):
+        t = {"Functions - Response Spectrum - User Defined": spectrum_table(), "Load Case Definitions - Response Spectrum": rs_cases(sf1=1.4, sf2=0.42)}
+        r = go(t, "r8_spectru", P)
+        self.assertEqual(r["status"], "info")                                          # ×1,4: amplificare pentru Fb dinamic >= 0,85 Fb static
+        self.assertIn("amplificat", r["findings"][0]["message"])
+        t["Load Case Definitions - Response Spectrum"] = rs_cases(sf1=5.0, sf2=1.5)
+        self.assertEqual(go(t, "r8_spectru", P)["status"], "error")
+
     def test_case_settings(self):
         t = {"Load Case Definitions - Response Spectrum": rs_cases(modal="SRSS", ecc=0.0, sf2=0.5)}
         r = go(t, "r8_caz_spectru")

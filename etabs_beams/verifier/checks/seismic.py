@@ -102,6 +102,11 @@ def r8_spectru(ctx):
                 plateau = exp_peak
                 if abs(ratio * G - 1.0) < 0.1 or abs(ratio / G - 1.0) < 0.1:
                     msg = "factorul g (9.81) lipsește sau e aplicat de două ori"
+                elif 1.1 < ratio <= 3.0:                       # amplificare voita (ex. P100-1: Fb dinamic >= 0,85 Fb static); corectitudinea o verifica r20_fb_static_dinamic
+                    out.append(Finding(INFO, f"Cazul „{c['name']}” (direcția {load}): spectrul e amplificat ×{ratio:.2f} față de P100-1 (ordonata efectivă {eff:.3f} m/s²): "
+                                             "acceptabil dacă amplificarea aduce forța tăietoare dinamică la ≥ 0,85 din cea statică (vezi regula 20).",
+                                       [("loadcase", c["name"])], {"scale_factor": sf, "raport": round(ratio, 4)}))
+                    continue
                 else:
                     msg = "ordonata efectivă diferă de cea așteptată"
                 out.append(Finding(ERROR, f"Cazul „{c['name']}” (direcția {load}): {msg} — ordonata efectivă maximă {eff:.3f} m/s² față de {plateau:.3f} m/s² așteptat.",

@@ -103,6 +103,13 @@ class PostTests(unittest.TestCase):
         t["Story Max Over Avg Drifts"] = df([dict(Story="E1", OutputCase="XP", Direction="X", Ratio=1.1)])
         self.assertEqual(go(t, "r21_torsiune_etaj", cases=["XP"])["status"], "info")
 
+    def test_torsion_is_judged_in_the_loaded_direction_only(self):
+        auto = df([dict(Name="EXP", XDir="No", XDirPlusE="Yes", XDirMinusE="No", YDir="No", YDirPlusE="No", YDirMinusE="No")])
+        t = {"Load Pattern Definitions - Auto Seismic - User Coefficient": auto, "Load Pattern Definitions": df([dict(Name="EXP", Type="Seismic")]),
+             "Story Max Over Avg Drifts": df([dict(Story="E1", OutputCase="EXP", Direction="X", Ratio=1.1),
+                                              dict(Story="E1", OutputCase="EXP", Direction="Y", Ratio=8.7)])}      # in Y deriva medie e neglijabila: raport fara sens
+        self.assertEqual(go(t, "r21_torsiune_etaj", cases=["EXP"])["status"], "info")
+
     def test_dead_reaction_vs_weight(self):
         lp = df([dict(Name="Dead", Type="Dead", SelfWtMult=1)])
         wt = df([dict(Story="E1", ObjectType="Wall", Weight=600.0, FloorArea=100.0), dict(Story="E1", ObjectType="Floor", Weight=400.0, FloorArea=100.0),

@@ -51,6 +51,9 @@ def gather_extras(session) -> Extras:
         ex.stories = dict(zip(st[2], st[3]))
         cs = ok(sap.Analyze.GetCaseStatus())
         ex.case_status = dict(zip(cs[1], cs[2]))
+        from .analysis import nonlinear_cases
+        skipped = nonlinear_cases(sap)                    # cazurile neliniare (ex. etapizat) nu se ruleaza implicit: lipsa rezultatelor lor nu e o problema
+        ex.case_status = {n: s for n, s in ex.case_status.items() if s == 4 or n not in skipped}
         ex.combos = list(ok(sap.RespCombo.GetNameList())[1])
     return ex
 
